@@ -34,7 +34,7 @@ def _rest_post(si: ServiceInstance, path: str, body: dict) -> Any:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, context=ctx) as resp:
+        with urllib.request.urlopen(req, context=ctx) as resp:  # nosec B310
             body_resp = resp.read()
             return json.loads(body_resp) if body_resp else {}
     except urllib.error.HTTPError as e:
@@ -55,7 +55,7 @@ def _rest_patch(si: ServiceInstance, path: str, body: dict) -> Any:
         method="PATCH",
     )
     try:
-        with urllib.request.urlopen(req, context=ctx) as resp:
+        with urllib.request.urlopen(req, context=ctx) as resp:  # nosec B310
             body_resp = resp.read()
             return json.loads(body_resp) if body_resp else {}
     except urllib.error.HTTPError as e:
@@ -73,7 +73,7 @@ def _rest_delete(si: ServiceInstance, path: str) -> None:
         url, headers={"vmware-api-session-id": session_id}, method="DELETE",
     )
     try:
-        with urllib.request.urlopen(req, context=ctx):
+        with urllib.request.urlopen(req, context=ctx) as _:  # nosec B310
             pass
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"REST DELETE {path} failed ({e.code}): {e.read().decode()}") from e

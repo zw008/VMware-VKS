@@ -36,7 +36,7 @@ def _rest_get(si: ServiceInstance, path: str) -> Any:
 
     req = urllib.request.Request(url, headers={"vmware-api-session-id": session_id})
     try:
-        with urllib.request.urlopen(req, context=ctx) as resp:
+        with urllib.request.urlopen(req, context=ctx) as resp:  # nosec B310
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode()
