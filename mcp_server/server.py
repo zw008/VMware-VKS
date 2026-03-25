@@ -144,15 +144,26 @@ def create_namespace(
     """
     si = _get_si(target)
     from vmware_vks.ops import namespace as _ns
-    result = _ns.create_namespace(
-        si, name=name, cluster_id=cluster_id, storage_policy=storage_policy,
-        cpu_limit=cpu_limit, memory_limit_mib=memory_limit_mib,
-        description=description, dry_run=dry_run,
-    )
+    t = target or "default"
+    params = {"cluster_id": cluster_id, "storage_policy": storage_policy}
+    try:
+        result = _ns.create_namespace(
+            si, name=name, cluster_id=cluster_id, storage_policy=storage_policy,
+            cpu_limit=cpu_limit, memory_limit_mib=memory_limit_mib,
+            description=description, dry_run=dry_run,
+        )
+    except Exception as e:
+        if not dry_run:
+            _audit.log(
+                target=t, operation="create_namespace",
+                resource=name, parameters=params,
+                result=f"failed: {e}",
+            )
+        raise
     if not dry_run:
         _audit.log(
-            target=target or "default", operation="create_namespace",
-            resource=name, parameters={"cluster_id": cluster_id, "storage_policy": storage_policy},
+            target=t, operation="create_namespace",
+            resource=name, parameters=params,
             result="success",
         )
     return result
@@ -176,10 +187,16 @@ def update_namespace(
     """
     si = _get_si(target)
     from vmware_vks.ops import namespace as _ns
-    result = _ns.update_namespace(si, name, cpu_limit=cpu_limit,
-                                  memory_limit_mib=memory_limit_mib,
-                                  storage_policy=storage_policy)
-    _audit.log(target=target or "default", operation="update_namespace",
+    t = target or "default"
+    try:
+        result = _ns.update_namespace(si, name, cpu_limit=cpu_limit,
+                                      memory_limit_mib=memory_limit_mib,
+                                      storage_policy=storage_policy)
+    except Exception as e:
+        _audit.log(target=t, operation="update_namespace",
+                   resource=name, parameters={}, result=f"failed: {e}")
+        raise
+    _audit.log(target=t, operation="update_namespace",
                resource=name, parameters={}, result="success")
     return result
 
@@ -203,9 +220,16 @@ def delete_namespace(
     """
     si = _get_si(target)
     from vmware_vks.ops import namespace as _ns
-    result = _ns.delete_namespace(si, name, confirmed=confirmed, dry_run=dry_run)
+    t = target or "default"
+    try:
+        result = _ns.delete_namespace(si, name, confirmed=confirmed, dry_run=dry_run)
+    except Exception as e:
+        if not dry_run and confirmed:
+            _audit.log(target=t, operation="delete_namespace",
+                       resource=name, parameters={}, result=f"failed: {e}")
+        raise
     if not dry_run and confirmed:
-        _audit.log(target=target or "default", operation="delete_namespace",
+        _audit.log(target=t, operation="delete_namespace",
                    resource=name, parameters={}, result="success")
     return result
 
@@ -299,17 +323,28 @@ def create_tkc_cluster(
     """
     si = _get_si(target)
     from vmware_vks.ops import tkc as _tkc
-    result = _tkc.create_tkc_cluster(
-        si, name=name, namespace=namespace, k8s_version=k8s_version,
-        vm_class=vm_class, control_plane_count=control_plane_count,
-        worker_count=worker_count, storage_class=storage_class, dry_run=dry_run,
-    )
+    t = target or "default"
+    params = {"k8s_version": k8s_version, "vm_class": vm_class, "workers": worker_count}
+    try:
+        result = _tkc.create_tkc_cluster(
+            si, name=name, namespace=namespace, k8s_version=k8s_version,
+            vm_class=vm_class, control_plane_count=control_plane_count,
+            worker_count=worker_count, storage_class=storage_class, dry_run=dry_run,
+        )
+    except Exception as e:
+        if not dry_run:
+            _audit.log(
+                target=t, operation="create_tkc_cluster",
+                resource=f"{namespace}/{name}",
+                parameters=params,
+                result=f"failed: {e}",
+            )
+        raise
     if not dry_run:
         _audit.log(
-            target=target or "default", operation="create_tkc_cluster",
+            target=t, operation="create_tkc_cluster",
             resource=f"{namespace}/{name}",
-            parameters={"k8s_version": k8s_version, "vm_class": vm_class,
-                        "workers": worker_count},
+            parameters=params,
             result="success",
         )
     return result
@@ -328,8 +363,15 @@ def scale_tkc_cluster(
     """
     si = _get_si(target)
     from vmware_vks.ops import tkc as _tkc
-    result = _tkc.scale_tkc_cluster(si, name, namespace, worker_count)
-    _audit.log(target=target or "default", operation="scale_tkc_cluster",
+    t = target or "default"
+    try:
+        result = _tkc.scale_tkc_cluster(si, name, namespace, worker_count)
+    except Exception as e:
+        _audit.log(target=t, operation="scale_tkc_cluster",
+                   resource=f"{namespace}/{name}", parameters={"worker_count": worker_count},
+                   result=f"failed: {e}")
+        raise
+    _audit.log(target=t, operation="scale_tkc_cluster",
                resource=f"{namespace}/{name}", parameters={"worker_count": worker_count},
                result="success")
     return result
@@ -348,8 +390,15 @@ def upgrade_tkc_cluster(
     """
     si = _get_si(target)
     from vmware_vks.ops import tkc as _tkc
-    result = _tkc.upgrade_tkc_cluster(si, name, namespace, k8s_version)
-    _audit.log(target=target or "default", operation="upgrade_tkc_cluster",
+    t = target or "default"
+    try:
+        result = _tkc.upgrade_tkc_cluster(si, name, namespace, k8s_version)
+    except Exception as e:
+        _audit.log(target=t, operation="upgrade_tkc_cluster",
+                   resource=f"{namespace}/{name}", parameters={"k8s_version": k8s_version},
+                   result=f"failed: {e}")
+        raise
+    _audit.log(target=t, operation="upgrade_tkc_cluster",
                resource=f"{namespace}/{name}", parameters={"k8s_version": k8s_version},
                result="success")
     return result
@@ -378,11 +427,19 @@ def delete_tkc_cluster(
     """
     si = _get_si(target)
     from vmware_vks.ops import tkc as _tkc
-    result = _tkc.delete_tkc_cluster(
-        si, name, namespace, confirmed=confirmed, dry_run=dry_run, force=force,
-    )
+    t = target or "default"
+    try:
+        result = _tkc.delete_tkc_cluster(
+            si, name, namespace, confirmed=confirmed, dry_run=dry_run, force=force,
+        )
+    except Exception as e:
+        if not dry_run and confirmed:
+            _audit.log(target=t, operation="delete_tkc_cluster",
+                       resource=f"{namespace}/{name}", parameters={"force": force},
+                       result=f"failed: {e}")
+        raise
     if not dry_run and confirmed:
-        _audit.log(target=target or "default", operation="delete_tkc_cluster",
+        _audit.log(target=t, operation="delete_tkc_cluster",
                    resource=f"{namespace}/{name}", parameters={"force": force},
                    result="success")
     return result

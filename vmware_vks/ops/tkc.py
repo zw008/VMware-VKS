@@ -261,6 +261,14 @@ def _check_running_workloads(si: ServiceInstance, name: str, namespace: str) -> 
                         "name": ss.metadata.name,
                         "namespace": ss.metadata.namespace,
                     })
+            for ds in apps_api.list_daemon_set_for_all_namespaces().items:
+                if ds.status and ds.status.number_ready and ds.status.number_ready > 0:
+                    workloads.append({
+                        "kind": "DaemonSet",
+                        "name": ds.metadata.name,
+                        "namespace": ds.metadata.namespace,
+                        "ready": ds.status.number_ready,
+                    })
             return workloads
         finally:
             Path(tmpfile).unlink(missing_ok=True)
