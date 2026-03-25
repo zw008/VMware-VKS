@@ -25,3 +25,8 @@ vmware-vks-mcp = "mcp_server.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["vmware_vks", "mcp_server"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
