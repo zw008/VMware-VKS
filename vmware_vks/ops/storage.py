@@ -14,7 +14,7 @@ def list_namespace_storage_usage(si: ServiceInstance, namespace: str) -> dict:
     api_client = get_k8s_client(si, namespace)
     core_api = k8s.client.CoreV1Api(api_client)
 
-    pvcs = core_api.list_namespaced_persistent_volume_claim(namespace="default")
+    pvcs = core_api.list_namespaced_persistent_volume_claim(namespace=namespace)
     items = [
         {
             "name": pvc.metadata.name,

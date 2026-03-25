@@ -29,20 +29,6 @@ from mcp.server.fastmcp import FastMCP
 from vmware_vks.config import load_config
 from vmware_vks.connection import ConnectionManager
 from vmware_vks.notify.audit import AuditLogger
-from vmware_vks.ops.supervisor import (
-    check_vks_compatibility,
-    get_supervisor_status,
-    list_supervisor_storage_policies,
-)
-from vmware_vks.ops.namespace import (
-    create_namespace,
-    delete_namespace,
-    get_namespace,
-    list_namespaces,
-    list_vm_classes,
-    update_namespace,
-)
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vmware-vks.mcp")
 

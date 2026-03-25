@@ -1,0 +1,8 @@
+services:
+  vmware-vks-mcp:
+    build: .
+    volumes:
+      - ~/.vmware-vks:/root/.vmware-vks:ro
+    environment:
+      - VMWARE_VKS_CONFIG=/root/.vmware-vks/config.yaml
+    stdin_open: true

@@ -1,0 +1,9 @@
+# mcp-agent (LastMile AI) configuration
+# Add to your mcp_agent.config.yaml
+
+mcp:
+  servers:
+    vmware-vks:
+      command: vmware-vks-mcp
+      env:
+        VMWARE_VKS_CONFIG: ~/.vmware-vks/config.yaml

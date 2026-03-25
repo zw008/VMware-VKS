@@ -125,9 +125,9 @@ def create_namespace(
         "storage_specs": [{"policy": storage_policy}],
     }
     resource_spec: dict = {}
-    if cpu_limit:
+    if cpu_limit is not None:
         resource_spec["cpu_limit"] = cpu_limit
-    if memory_limit_mib:
+    if memory_limit_mib is not None:
         resource_spec["memory_limit"] = memory_limit_mib
     if resource_spec:
         spec["resource_spec"] = resource_spec

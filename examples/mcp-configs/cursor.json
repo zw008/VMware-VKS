@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "vmware-vks": {
+      "command": "vmware-vks-mcp",
+      "env": {
+        "VMWARE_VKS_CONFIG": "~/.vmware-vks/config.yaml"
+      }
+    }
+  }
+}

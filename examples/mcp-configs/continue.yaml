@@ -1,0 +1,8 @@
+# Continue configuration
+# Add to your Continue MCP settings (~/.continue/config.yaml)
+
+mcpServers:
+  - name: vmware-vks
+    command: vmware-vks-mcp
+    env:
+      VMWARE_VKS_CONFIG: ~/.vmware-vks/config.yaml

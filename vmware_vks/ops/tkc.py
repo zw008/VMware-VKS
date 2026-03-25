@@ -265,8 +265,11 @@ def _check_running_workloads(si: ServiceInstance, name: str, namespace: str) -> 
         finally:
             Path(tmpfile).unlink(missing_ok=True)
     except Exception as e:
-        _log.warning("Could not check workloads (proceeding safely): %s", e)
-        return []
+        _log.warning("Could not verify workloads in cluster '%s': %s", name, e)
+        raise RuntimeError(
+            f"Cannot verify workloads in TKC cluster '{name}': {e}. "
+            "Use force=True to skip workload check."
+        ) from e
 
 
 def delete_tkc_cluster(

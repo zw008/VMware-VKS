@@ -66,7 +66,7 @@ npx skills add zw008/VMware-VKS
 clawhub install vmware-vks
 
 # Via PyPI (recommended for version pinning)
-uv tool install vmware-vks==1.2.1
+uv tool install vmware-vks==1.2.3
 ```
 
 ### Claude Code
