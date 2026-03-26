@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.3.0 — 2026-03-26
+
+### Docs / Skill optimization
+
+- SKILL.md restructured with progressive disclosure (3-level loading)
+- Created `references/` directory: cli-reference.md, capabilities.md, setup-guide.md
+- Added trigger phrases to YAML description for better skill auto-loading
+- Added Common Workflows section (Deploy TKC, Scale workers, Namespace management)
+- Added Troubleshooting section (6 common issues)
+- README.md and README-CN.md updated with Companion Skills, Workflows, Troubleshooting
+
+---
+
 ## v0.1.0 (2026-03-25)
 
 ### New Features
