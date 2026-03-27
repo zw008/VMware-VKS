@@ -13,6 +13,8 @@ description: >
 installer:
   kind: uv
   package: vmware-vks
+allowed-tools:
+  - Bash
 metadata: {"openclaw":{"requires":{"env":["VMWARE_VKS_CONFIG"],"bins":["vmware-vks"],"config":["~/.vmware-vks/config.yaml"]},"primaryEnv":"VMWARE_VKS_CONFIG","homepage":"https://github.com/zw008/VMware-VKS","emoji":"☸️","os":["macos","linux"]}}
 ---
 
