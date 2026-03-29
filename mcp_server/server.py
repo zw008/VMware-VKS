@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from vmware_policy import vmware_tool
 
 from vmware_vks.config import load_config
 from vmware_vks.connection import ConnectionManager
@@ -56,6 +57,7 @@ def _get_si(target: str | None = None):
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def check_vks_compatibility(target: str | None = None) -> dict:
     """Check if this vCenter supports VKS (requires vSphere 8.x+).
 
@@ -68,6 +70,7 @@ def check_vks_compatibility(target: str | None = None) -> dict:
 
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def get_supervisor_status(cluster_id: str, target: str | None = None) -> dict:
     """Get Supervisor Cluster status.
 
@@ -83,6 +86,7 @@ def get_supervisor_status(cluster_id: str, target: str | None = None) -> dict:
 
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def list_supervisor_storage_policies(target: str | None = None) -> list[dict]:
     """List storage policies available for Supervisor Namespaces.
 
@@ -99,6 +103,7 @@ def list_supervisor_storage_policies(target: str | None = None) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def list_namespaces(target: str | None = None) -> list[dict]:
     """List all vSphere Namespaces with status."""
     si = _get_si(target)
@@ -107,6 +112,7 @@ def list_namespaces(target: str | None = None) -> list[dict]:
 
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def get_namespace(name: str, target: str | None = None) -> dict:
     """Get detailed information for a single vSphere Namespace.
 
@@ -120,6 +126,7 @@ def get_namespace(name: str, target: str | None = None) -> dict:
 
 
 @mcp.tool()
+@vmware_tool(risk_level="medium")
 def create_namespace(
     name: str,
     cluster_id: str,
@@ -170,6 +177,7 @@ def create_namespace(
 
 
 @mcp.tool()
+@vmware_tool(risk_level="medium")
 def update_namespace(
     name: str,
     cpu_limit: int | None = None,
@@ -202,6 +210,7 @@ def update_namespace(
 
 
 @mcp.tool()
+@vmware_tool(risk_level="high")
 def delete_namespace(
     name: str,
     confirmed: bool = False,
@@ -235,6 +244,7 @@ def delete_namespace(
 
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def list_vm_classes(target: str | None = None) -> list[dict]:
     """List available VM classes for TKC node sizing.
 
@@ -251,6 +261,7 @@ def list_vm_classes(target: str | None = None) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def list_tkc_clusters(namespace: str | None = None, target: str | None = None) -> dict:
     """List TanzuKubernetesCluster (TKC) clusters.
 
@@ -266,6 +277,7 @@ def list_tkc_clusters(namespace: str | None = None, target: str | None = None) -
 
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def get_tkc_cluster(name: str, namespace: str, target: str | None = None) -> dict:
     """Get detailed info for a single TKC cluster.
 
@@ -280,6 +292,7 @@ def get_tkc_cluster(name: str, namespace: str, target: str | None = None) -> dic
 
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def get_tkc_available_versions(namespace: str, target: str | None = None) -> dict:
     """List K8s versions available for new TKC clusters.
 
@@ -293,6 +306,7 @@ def get_tkc_available_versions(namespace: str, target: str | None = None) -> dic
 
 
 @mcp.tool()
+@vmware_tool(risk_level="medium")
 def create_tkc_cluster(
     name: str,
     namespace: str,
@@ -351,6 +365,7 @@ def create_tkc_cluster(
 
 
 @mcp.tool()
+@vmware_tool(risk_level="medium")
 def scale_tkc_cluster(
     name: str, namespace: str, worker_count: int, target: str | None = None
 ) -> dict:
@@ -378,6 +393,7 @@ def scale_tkc_cluster(
 
 
 @mcp.tool()
+@vmware_tool(risk_level="medium")
 def upgrade_tkc_cluster(
     name: str, namespace: str, k8s_version: str, target: str | None = None
 ) -> dict:
@@ -405,6 +421,7 @@ def upgrade_tkc_cluster(
 
 
 @mcp.tool()
+@vmware_tool(risk_level="high")
 def delete_tkc_cluster(
     name: str,
     namespace: str,
@@ -450,6 +467,7 @@ def delete_tkc_cluster(
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def get_supervisor_kubeconfig(namespace: str, target: str | None = None) -> dict:
     """Get kubeconfig for the Supervisor K8s API endpoint.
 
@@ -466,6 +484,7 @@ def get_supervisor_kubeconfig(namespace: str, target: str | None = None) -> dict
 
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def get_tkc_kubeconfig(
     name: str,
     namespace: str,
@@ -488,6 +507,7 @@ def get_tkc_kubeconfig(
 
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def get_harbor_info(target: str | None = None) -> dict:
     """Get embedded Harbor registry info (URL, storage usage, status).
 
@@ -500,6 +520,7 @@ def get_harbor_info(target: str | None = None) -> dict:
 
 
 @mcp.tool()
+@vmware_tool(risk_level="low")
 def list_namespace_storage_usage(namespace: str, target: str | None = None) -> dict:
     """List PVCs and storage usage for a vSphere Namespace.
 
