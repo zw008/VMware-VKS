@@ -4,7 +4,7 @@ description: >
   Use this skill whenever the user needs to manage Tanzu Kubernetes (VKS) on vSphere — Supervisor clusters, vSphere Namespaces, and TKC cluster lifecycle.
   Directly handles: check VKS compatibility, create/delete namespaces, create/scale/upgrade/delete TKC clusters, get kubeconfig, check Harbor registry.
   Always use this skill for "create Kubernetes cluster", "scale workers", "upgrade K8s version", "create namespace", "get kubeconfig", or any Tanzu/VKS/TKC task.
-  For VM operations use vmware-aiops, for networking use vmware-nsx.
+  For VM operations use vmware-aiops, for networking use vmware-nsx. For load balancing/AVI/AKO use vmware-avi.
 installer:
   kind: uv
   package: vmware-vks
@@ -20,7 +20,7 @@ compatibility: >
 AI-powered VMware vSphere with Tanzu (VKS) management — 20 MCP tools.
 
 > Requires vSphere 8.x+ with Workload Management enabled.
-> **Companion skills**: [vmware-aiops](https://github.com/zw008/VMware-AIops) (VM lifecycle), [vmware-monitor](https://github.com/zw008/VMware-Monitor) (monitoring), [vmware-storage](https://github.com/zw008/VMware-Storage) (storage), [vmware-nsx](https://github.com/zw008/VMware-NSX) (NSX networking), [vmware-nsx-security](https://github.com/zw008/VMware-NSX-Security) (DFW/firewall), [vmware-aria](https://github.com/zw008/VMware-Aria) (metrics/alerts/capacity).
+> **Companion skills**: [vmware-aiops](https://github.com/zw008/VMware-AIops) (VM lifecycle), [vmware-monitor](https://github.com/zw008/VMware-Monitor) (monitoring), [vmware-storage](https://github.com/zw008/VMware-Storage) (storage), [vmware-nsx](https://github.com/zw008/VMware-NSX) (NSX networking), [vmware-nsx-security](https://github.com/zw008/VMware-NSX-Security) (DFW/firewall), [vmware-aria](https://github.com/zw008/VMware-Aria) (metrics/alerts/capacity), [vmware-avi](https://github.com/zw008/VMware-AVI) (AVI/ALB/AKO).
 > | [vmware-pilot](../vmware-pilot/SKILL.md) (workflow orchestration) | [vmware-policy](../vmware-policy/SKILL.md) (audit/policy)
 
 ## What This Skill Does
@@ -51,6 +51,7 @@ vmware-vks doctor
 - VM lifecycle, deployment → `vmware-aiops`
 - Inventory, health, alarms → `vmware-monitor`
 - iSCSI, vSAN, datastore → `vmware-storage`
+- Load balancing, AVI/ALB, AKO, Ingress → `vmware-avi`
 
 ## Related Skills — Skill Routing
 
@@ -64,6 +65,7 @@ vmware-vks doctor
 | NSX security: DFW rules, security groups | **vmware-nsx-security** |
 | Aria Ops: metrics, alerts, capacity planning | **vmware-aria** |
 | Multi-step workflows with approval | **vmware-pilot** |
+| Load balancer, AVI, ALB, AKO, Ingress | **vmware-avi** (`uv tool install vmware-avi`) |
 | Audit log query | **vmware-policy** (`vmware-audit` CLI) |
 
 ## Common Workflows
@@ -110,6 +112,14 @@ vCenter Server 8.x+ (Workload Management enabled)
   ↓
 Supervisor Cluster → vSphere Namespaces → TanzuKubernetesCluster
 ```
+
+## Usage Mode
+
+| Scenario | Recommended | Why |
+|----------|:-----------:|-----|
+| Local/small models (Ollama, Qwen) | **CLI** | ~2K tokens vs ~8K for MCP |
+| Cloud models (Claude, GPT-4o) | Either | MCP gives structured JSON I/O |
+| Automated pipelines | **MCP** | Type-safe parameters, structured output |
 
 ## MCP Tools (20)
 

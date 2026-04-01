@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
+from vmware_policy import sanitize
+
 from vmware_vks.ops.supervisor import _rest_get
 
 _log = logging.getLogger("vmware-vks.ops.namespace")
@@ -94,9 +96,9 @@ def list_namespaces(si: ServiceInstance) -> list[dict]:
     data = _rest_get(si, "/vcenter/namespaces/instances")
     return [
         {
-            "namespace": item.get("namespace"),
+            "namespace": sanitize(item.get("namespace", "")),
             "config_status": item.get("config_status"),
-            "description": item.get("description", ""),
+            "description": sanitize(item.get("description", ""), max_len=1000),
         }
         for item in (data if isinstance(data, list) else [])
     ]

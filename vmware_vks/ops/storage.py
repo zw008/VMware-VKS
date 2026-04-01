@@ -2,6 +2,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from vmware_policy import sanitize
+
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
@@ -17,8 +19,8 @@ def list_namespace_storage_usage(si: ServiceInstance, namespace: str) -> dict:
     pvcs = core_api.list_namespaced_persistent_volume_claim(namespace=namespace)
     items = [
         {
-            "name": pvc.metadata.name,
-            "namespace": pvc.metadata.namespace,
+            "name": sanitize(pvc.metadata.name),
+            "namespace": sanitize(pvc.metadata.namespace),
             "status": pvc.status.phase,
             "capacity": pvc.status.capacity.get("storage") if pvc.status.capacity else None,
             "storage_class": pvc.spec.storage_class_name,

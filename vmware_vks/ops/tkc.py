@@ -18,6 +18,8 @@ import yaml
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
+from vmware_policy import sanitize
+
 _log = logging.getLogger("vmware-vks.ops.tkc")
 
 _TKC_GROUP = "cluster.x-k8s.io"
@@ -100,8 +102,8 @@ def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict
     items = raw.get("items", [])
     clusters = [
         {
-            "name": item["metadata"]["name"],
-            "namespace": item["metadata"]["namespace"],
+            "name": sanitize(item["metadata"]["name"]),
+            "namespace": sanitize(item["metadata"]["namespace"]),
             "phase": item.get("status", {}).get("phase", "Unknown"),
             "k8s_version": item["spec"]["topology"].get("version", ""),
         }
@@ -118,6 +120,14 @@ def get_tkc_cluster(si: ServiceInstance, name: str, namespace: str) -> dict:
         namespace=namespace, plural=_TKC_PLURAL, name=name,
     )
     status = raw.get("status", {})
+    conditions = [
+        {
+            "type": sanitize(c.get("type", "")),
+            "status": c.get("status", ""),
+            "message": sanitize(c.get("message", ""), max_len=500),
+        }
+        for c in status.get("conditions", [])
+    ]
     return {
         "name": name,
         "namespace": namespace,
@@ -125,7 +135,7 @@ def get_tkc_cluster(si: ServiceInstance, name: str, namespace: str) -> dict:
         "k8s_version": raw["spec"]["topology"].get("version"),
         "control_plane_replicas": raw["spec"]["topology"]["controlPlane"].get("replicas"),
         "worker_replicas": raw["spec"]["topology"]["workers"]["machineDeployments"][0].get("replicas"),
-        "conditions": status.get("conditions", []),
+        "conditions": conditions,
         "infrastructure_ready": status.get("infrastructureReady", False),
         "control_plane_ready": status.get("controlPlaneReady", False),
     }

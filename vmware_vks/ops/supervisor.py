@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
+from vmware_policy import sanitize
+
 _log = logging.getLogger("vmware-vks.ops.supervisor")
 
 _MIN_VERSION = (8, 0, 0)
@@ -78,7 +80,7 @@ def get_supervisor_status(si: ServiceInstance, cluster_id: str) -> dict:
         "cluster_id": cluster_id,
         "config_status": data.get("config_status"),
         "kubernetes_status": data.get("kubernetes_status"),
-        "api_server_cluster_endpoint": data.get("api_server_cluster_endpoint"),
+        "api_server_cluster_endpoint": sanitize(data.get("api_server_cluster_endpoint", "")),
         "kubernetes_version": data.get("current_kubernetes_version"),
         "network_provider": data.get("network_provider"),
     }
