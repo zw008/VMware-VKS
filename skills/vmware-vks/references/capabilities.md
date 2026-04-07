@@ -52,7 +52,7 @@ Detailed capability breakdown for all 20 MCP tools.
 | Namespace Delete Guard | Rejects if TKC clusters exist inside -- prevents orphaned clusters |
 | TKC Delete Guard | Rejects if Deployments/StatefulSets/DaemonSets are running -- prevents data loss |
 | Force Override | `force=True` on `delete_tkc_cluster` bypasses workload guard (explicit acknowledgement) |
-| Audit Trail | All write operations logged to `~/.vmware-vks/audit.log` (JSON Lines) with timestamp, target, operation, parameters, result, user |
+| Audit Trail | All write operations logged to `~/.vmware/audit.db` (SQLite WAL, via vmware-policy) with timestamp, target, operation, parameters, result, user |
 | Read-Only Majority | 12/20 tools are read-only |
 | SSL Support | `verify_ssl: false` supported for self-signed vCenter certs (enterprise standard) |
 
