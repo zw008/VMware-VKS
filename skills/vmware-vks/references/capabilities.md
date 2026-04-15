@@ -70,6 +70,6 @@ Detailed capability breakdown for all 20 MCP tools.
 ## Prerequisites
 
 - vCenter Server (no direct ESXi support -- VKS requires vCenter)
-- vSphere with Tanzu license (Enterprise Plus or VCF)
+- vSphere Kubernetes Service license (Enterprise Plus or VCF)
 - Workload Management (WCP) enabled on at least one cluster
-- Network backend: NSX-T (recommended) or VDS + HAProxy (7.x alternative, 8.x limited)
+- Network backend: NSX (recommended) or VDS + Avi Networks (7.x alternative, 8.x limited)
