@@ -1,3 +1,10 @@
+## v1.5.7 (2026-04-15)
+
+- Fix: VKS REST calls hardcoded `ssl.CERT_NONE` regardless of `target.verify_ssl` config, silently ignoring users who opted in to certificate verification. Added `_build_ssl_context(si)` that honours the trust preference recorded on the ServiceInstance by the connection manager.
+- Fix: VKS REST calls had no timeout — default global socket timeout could hang the session on unreachable endpoints. Added `timeout=30` seconds on all REST requests (override via `VMWARE_VKS_REST_TIMEOUT`).
+- Refactor: de-duplicated `_rest_post/_rest_patch/_rest_delete` helpers into a single `_rest_request(method, path, body)` in supervisor.py; namespace.py now imports from supervisor.
+- Align with VMware skill family v1.5.7
+
 ## v1.5.6 (2026-04-15)
 
 - Align with VMware skill family v1.5.6 (AVI bugfixes + packaging hotfix)

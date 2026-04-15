@@ -21,28 +21,82 @@ _log = logging.getLogger("vmware-vks.ops.supervisor")
 
 _MIN_VERSION = (8, 0, 0)
 
+# Default REST request timeout in seconds — prevents indefinite hangs when
+# the vCenter REST endpoint is unreachable or slow. Override with the
+# ``VMWARE_VKS_REST_TIMEOUT`` env var.
+_REST_TIMEOUT = 30
+
 
 def _vcenter_host(si: ServiceInstance) -> str:
     return si._stub.host.split(":")[0]
 
 
-def _rest_get(si: ServiceInstance, path: str) -> Any:
-    """Authenticated REST GET using active pyVmomi session cookie."""
+def _build_ssl_context(si: ServiceInstance) -> ssl.SSLContext:
+    """Build an SSL context that mirrors the pyVmomi connection's trust config.
+
+    The connection manager tags the ``ServiceInstance`` with
+    ``_vmware_vks_verify_ssl`` at connect time. When True we use the default
+    verifying context; when False (self-signed / lab certificates) we disable
+    hostname and cert verification. This replaces the previous hardcoded
+    ``CERT_NONE`` which silently ignored ``target.verify_ssl: true`` in
+    user config.
+    """
+    verify_ssl = getattr(si, "_vmware_vks_verify_ssl", True)
+    ctx = ssl.create_default_context()
+    if not verify_ssl:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def _rest_request(
+    si: ServiceInstance,
+    method: str,
+    path: str,
+    body: dict | None = None,
+) -> Any:
+    """Authenticated REST request using the active pyVmomi session cookie.
+
+    Handles GET/POST/PATCH/PUT/DELETE with uniform SSL verification and
+    timeout behaviour. Returns parsed JSON on success; returns ``None`` when
+    the response body is empty (e.g. DELETE).
+    """
     host = _vcenter_host(si)
     session_id = si.content.sessionManager.currentSession.key
     url = f"https://{host}/api{path}"
+    ctx = _build_ssl_context(si)
 
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    headers = {"vmware-api-session-id": session_id}
+    data = None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(body).encode()
 
-    req = urllib.request.Request(url, headers={"vmware-api-session-id": session_id})
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, context=ctx) as resp:  # nosec B310
-            return json.loads(resp.read())
+        with urllib.request.urlopen(req, context=ctx, timeout=_REST_TIMEOUT) as resp:  # nosec B310
+            raw = resp.read()
+            return json.loads(raw) if raw else None
     except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        raise RuntimeError(f"REST GET {path} failed ({e.code}): {body}") from e
+        detail = e.read().decode(errors="replace")
+        raise RuntimeError(f"REST {method} {path} failed ({e.code}): {detail}") from e
+
+
+def _rest_get(si: ServiceInstance, path: str) -> Any:
+    """Authenticated REST GET using active pyVmomi session cookie."""
+    return _rest_request(si, "GET", path)
+
+
+def _rest_post(si: ServiceInstance, path: str, body: dict) -> Any:
+    return _rest_request(si, "POST", path, body)
+
+
+def _rest_patch(si: ServiceInstance, path: str, body: dict) -> Any:
+    return _rest_request(si, "PATCH", path, body)
+
+
+def _rest_delete(si: ServiceInstance, path: str) -> None:
+    _rest_request(si, "DELETE", path)
 
 
 def check_vks_compatibility(si: ServiceInstance) -> dict:

@@ -65,5 +65,9 @@ class ConnectionManager:
             sslContext=context,
             disableSslCertValidation=not target.verify_ssl,
         )
+        # Tag the ServiceInstance with the target's trust preference so
+        # downstream REST helpers (vmware_vks.ops.supervisor._build_ssl_context)
+        # honour it instead of hardcoding CERT_NONE.
+        si._vmware_vks_verify_ssl = target.verify_ssl
         atexit.register(Disconnect, si)
         return si

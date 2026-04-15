@@ -5,11 +5,7 @@ delete_namespace has an additional guard: rejects if TKC clusters exist inside.
 """
 from __future__ import annotations
 
-import json
 import logging
-import ssl
-import urllib.error
-import urllib.request
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -17,68 +13,9 @@ if TYPE_CHECKING:
 
 from vmware_policy import sanitize
 
-from vmware_vks.ops.supervisor import _rest_get
+from vmware_vks.ops.supervisor import _rest_delete, _rest_get, _rest_patch, _rest_post
 
 _log = logging.getLogger("vmware-vks.ops.namespace")
-
-
-def _rest_post(si: ServiceInstance, path: str, body: dict) -> Any:
-    host = si._stub.host.split(":")[0]
-    session_id = si.content.sessionManager.currentSession.key
-    url = f"https://{host}/api{path}"
-    data = json.dumps(body).encode()
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    req = urllib.request.Request(
-        url, data=data,
-        headers={"vmware-api-session-id": session_id, "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, context=ctx) as resp:  # nosec B310
-            body_resp = resp.read()
-            return json.loads(body_resp) if body_resp else {}
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"REST POST {path} failed ({e.code}): {e.read().decode()}") from e
-
-
-def _rest_patch(si: ServiceInstance, path: str, body: dict) -> Any:
-    host = si._stub.host.split(":")[0]
-    session_id = si.content.sessionManager.currentSession.key
-    url = f"https://{host}/api{path}"
-    data = json.dumps(body).encode()
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    req = urllib.request.Request(
-        url, data=data,
-        headers={"vmware-api-session-id": session_id, "Content-Type": "application/json"},
-        method="PATCH",
-    )
-    try:
-        with urllib.request.urlopen(req, context=ctx) as resp:  # nosec B310
-            body_resp = resp.read()
-            return json.loads(body_resp) if body_resp else {}
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"REST PATCH {path} failed ({e.code}): {e.read().decode()}") from e
-
-
-def _rest_delete(si: ServiceInstance, path: str) -> None:
-    host = si._stub.host.split(":")[0]
-    session_id = si.content.sessionManager.currentSession.key
-    url = f"https://{host}/api{path}"
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    req = urllib.request.Request(
-        url, headers={"vmware-api-session-id": session_id}, method="DELETE",
-    )
-    try:
-        with urllib.request.urlopen(req, context=ctx) as _:  # nosec B310
-            pass
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"REST DELETE {path} failed ({e.code}): {e.read().decode()}") from e
 
 
 def _list_tkc_in_namespace(si: ServiceInstance, namespace: str) -> list[str]:
