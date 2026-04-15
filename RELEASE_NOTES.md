@@ -1,3 +1,7 @@
+## v1.5.8 (2026-04-15)
+
+- Align with VMware skill family v1.5.8 (NSX/AVI/Aria/AIops bug fixes)
+
 ## v1.5.7 (2026-04-15)
 
 - Fix: VKS REST calls hardcoded `ssl.CERT_NONE` regardless of `target.verify_ssl` config, silently ignoring users who opted in to certificate verification. Added `_build_ssl_context(si)` that honours the trust preference recorded on the ServiceInstance by the connection manager.
