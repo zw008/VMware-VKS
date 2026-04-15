@@ -1,3 +1,8 @@
+## v1.5.9 (2026-04-15)
+
+- Docs: corrected vSphere version requirement in SKILL.md routing table from "vSphere 7.x+" to "vSphere 8.x+" (matches the `_MIN_VERSION = (8, 0, 0)` enforced in `vmware_vks/ops/supervisor.py`). The earlier TKGS / vSphere with Tanzu product worked on 7.x; the "VKS" rebrand applies to the vSphere 8.x+ Workload Management API surface this skill targets.
+- Docs: branding cleanup from external contributor — TKGS → VKS, NSX-T → NSX, HAProxy → Avi Networks (#6, credit @ryanconley1).
+
 ## v1.5.8 (2026-04-15)
 
 - Align with VMware skill family v1.5.8 (NSX/AVI/Aria/AIops bug fixes)
