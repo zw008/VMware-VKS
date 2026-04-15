@@ -64,7 +64,7 @@ vmware-vks doctor
 | Read-only monitoring | **vmware-monitor** |
 | Storage: iSCSI, vSAN | **vmware-storage** |
 | VM lifecycle, deployment | **vmware-aiops** |
-| vSphere Kubernetes Service (vSphere 7.x+) | **vmware-vks** ← this skill |
+| vSphere Kubernetes Service (vSphere 8.x+) | **vmware-vks** ← this skill |
 | NSX networking: segments, gateways, NAT | **vmware-nsx** |
 | NSX security: DFW rules, security groups | **vmware-nsx-security** |
 | Aria Ops: metrics, alerts, capacity planning | **vmware-aria** |
