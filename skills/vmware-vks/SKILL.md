@@ -1,10 +1,10 @@
 ---
 name: vmware-vks
 description: >
-  Use this skill whenever the user needs to manage Tanzu Kubernetes (VKS) on vSphere — Supervisor clusters, vSphere Namespaces, and TKC cluster lifecycle.
+  Use this skill whenever the user needs to manage vSphere Kubernetes Service (VKS) — Supervisor clusters, vSphere Namespaces, and TKC cluster lifecycle.
   Directly handles: check VKS compatibility, create/delete namespaces, create/scale/upgrade/delete TKC clusters, get kubeconfig, check Harbor registry.
-  Always use this skill for "create Kubernetes cluster", "scale workers", "upgrade K8s version", "create namespace", "get kubeconfig", or any Tanzu/VKS/TKC task.
-  Do NOT use for vanilla VM operations (use vmware-aiops), non-Tanzu Kubernetes (e.g., kubeadm, EKS, AKS), or AVI/AKO load balancing (use vmware-avi).
+  Always use this skill for "create Kubernetes cluster", "scale workers", "upgrade K8s version", "create namespace", "get kubeconfig", or any VKS/TKC task.
+  Do NOT use for vanilla VM operations (use vmware-aiops), non-vSphere Kubernetes (e.g., kubeadm, EKS, AKS), or AVI/AKO load balancing (use vmware-avi).
   For networking use vmware-nsx.
 installer:
   kind: uv
@@ -21,7 +21,7 @@ compatibility: >
 
 > **Disclaimer**: This is a community-maintained open-source project and is **not affiliated with, endorsed by, or sponsored by VMware, Inc. or Broadcom Inc.** "VMware" and "vSphere" are trademarks of Broadcom. Source code is publicly auditable at [github.com/zw008/VMware-VKS](https://github.com/zw008/VMware-VKS) under the MIT license.
 
-AI-powered VMware vSphere with Tanzu (VKS) management — 20 MCP tools.
+AI-powered VMware vSphere Kubernetes Service (VKS) management — 20 MCP tools.
 
 > Requires vSphere 8.x+ with Workload Management enabled.
 > **Companion skills**: [vmware-aiops](https://github.com/zw008/VMware-AIops) (VM lifecycle), [vmware-monitor](https://github.com/zw008/VMware-Monitor) (monitoring), [vmware-storage](https://github.com/zw008/VMware-Storage) (storage), [vmware-nsx](https://github.com/zw008/VMware-NSX) (NSX networking), [vmware-nsx-security](https://github.com/zw008/VMware-NSX-Security) (DFW/firewall), [vmware-aria](https://github.com/zw008/VMware-Aria) (metrics/alerts/capacity), [vmware-avi](https://github.com/zw008/VMware-AVI) (AVI/ALB/AKO).
@@ -45,7 +45,7 @@ vmware-vks doctor
 
 ## When to Use This Skill
 
-- Check if vSphere environment supports VKS/Tanzu
+- Check if vSphere environment supports VKS
 - Create, update, or delete Supervisor Namespaces with resource quotas
 - Deploy, scale, upgrade, or delete TKC (TanzuKubernetesCluster) clusters
 - Get kubeconfig for Supervisor or TKC clusters
@@ -64,7 +64,7 @@ vmware-vks doctor
 | Read-only monitoring | **vmware-monitor** |
 | Storage: iSCSI, vSAN | **vmware-storage** |
 | VM lifecycle, deployment | **vmware-aiops** |
-| Tanzu Kubernetes (vSphere 8.x+) | **vmware-vks** ← this skill |
+| vSphere Kubernetes Service (vSphere 7.x+) | **vmware-vks** ← this skill |
 | NSX networking: segments, gateways, NAT | **vmware-nsx** |
 | NSX security: DFW rules, security groups | **vmware-nsx-security** |
 | Aria Ops: metrics, alerts, capacity planning | **vmware-aria** |
