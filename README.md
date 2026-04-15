@@ -7,7 +7,7 @@
 
 [English](README.md) | [中文](README-CN.md)
 
-MCP Skill + CLI for VMware vSphere with Tanzu (VKS) management — Supervisor clusters, vSphere Namespaces, and TanzuKubernetesCluster lifecycle. 20 MCP tools.
+MCP Skill + CLI for VMware vSphere Kubernetes Service (VKS) management — Supervisor clusters, vSphere Namespaces, and VKS Cluster lifecycle. 20 MCP tools.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -28,7 +28,7 @@ MCP Skill + CLI for VMware vSphere with Tanzu (VKS) management — Supervisor cl
 
 - **vSphere 8.0+** — Workload Management (Supervisor) APIs require vSphere 8.x
 - **Workload Management enabled** — WCP must be enabled on at least one compute cluster
-- **License** — vSphere with Tanzu (Enterprise Plus or VMware Cloud Foundation)
+- **License** — vSphere Kubernetes Service (Enterprise Plus or VMware Cloud Foundation)
 
 Run `vmware-vks check` after setup to verify all requirements are met.
 
@@ -163,7 +163,7 @@ vmware-vks namespace update <name> [--cpu <mhz>] [--memory <mib>]
 vmware-vks namespace delete <name>
 vmware-vks namespace vm-classes
 
-# TKC
+# VKS Cluster
 vmware-vks tkc list [-n <namespace>]
 vmware-vks tkc get <name> -n <namespace>
 vmware-vks tkc versions -n <namespace>
