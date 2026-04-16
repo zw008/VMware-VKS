@@ -1,3 +1,8 @@
+## v1.5.10 (2026-04-16)
+
+- Security: bump python-multipart 0.0.22→0.0.26 (DoS via large multipart preamble/epilogue)
+- Align with VMware skill family v1.5.10
+
 ## v1.5.9 (2026-04-15)
 
 - Docs: corrected vSphere version requirement in SKILL.md routing table from "vSphere 7.x+" to "vSphere 8.x+" (matches the `_MIN_VERSION = (8, 0, 0)` enforced in `vmware_vks/ops/supervisor.py`). The earlier TKGS / vSphere with Tanzu product worked on 7.x; the "VKS" rebrand applies to the vSphere 8.x+ Workload Management API surface this skill targets.
