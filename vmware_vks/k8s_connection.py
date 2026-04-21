@@ -79,6 +79,7 @@ def get_k8s_client(si: ServiceInstance, namespace: str):
     """Get a kubernetes ApiClient connected to the Supervisor namespace.
 
     Returns a kubernetes.client.ApiClient instance.
+    Caller MUST close the client when done (use as context manager or call .close()).
     """
     import kubernetes as k8s
 

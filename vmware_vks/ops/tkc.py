@@ -90,55 +90,61 @@ def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict
     """List TKC clusters in a namespace (or all namespaces)."""
     ns = namespace or "default"
     api = _get_custom_objects_api(si, ns)
-    if namespace:
-        raw = api.list_namespaced_custom_object(
-            group=_TKC_GROUP, version=_TKC_VERSION,
-            namespace=namespace, plural=_TKC_PLURAL,
-        )
-    else:
-        raw = api.list_cluster_custom_object(
-            group=_TKC_GROUP, version=_TKC_VERSION, plural=_TKC_PLURAL,
-        )
-    items = raw.get("items", [])
-    clusters = [
-        {
-            "name": sanitize(item["metadata"]["name"]),
-            "namespace": sanitize(item["metadata"]["namespace"]),
-            "phase": item.get("status", {}).get("phase", "Unknown"),
-            "k8s_version": item["spec"]["topology"].get("version", ""),
-        }
-        for item in items
-    ]
-    return {"total": len(clusters), "clusters": clusters}
+    try:
+        if namespace:
+            raw = api.list_namespaced_custom_object(
+                group=_TKC_GROUP, version=_TKC_VERSION,
+                namespace=namespace, plural=_TKC_PLURAL,
+            )
+        else:
+            raw = api.list_cluster_custom_object(
+                group=_TKC_GROUP, version=_TKC_VERSION, plural=_TKC_PLURAL,
+            )
+        items = raw.get("items", [])
+        clusters = [
+            {
+                "name": sanitize(item["metadata"]["name"]),
+                "namespace": sanitize(item["metadata"]["namespace"]),
+                "phase": item.get("status", {}).get("phase", "Unknown"),
+                "k8s_version": item["spec"]["topology"].get("version", ""),
+            }
+            for item in items
+        ]
+        return {"total": len(clusters), "clusters": clusters}
+    finally:
+        api.api_client.close()
 
 
 def get_tkc_cluster(si: ServiceInstance, name: str, namespace: str) -> dict:
     """Get detailed TKC cluster info."""
     api = _get_custom_objects_api(si, namespace)
-    raw = api.get_namespaced_custom_object(
-        group=_TKC_GROUP, version=_TKC_VERSION,
-        namespace=namespace, plural=_TKC_PLURAL, name=name,
-    )
-    status = raw.get("status", {})
-    conditions = [
-        {
-            "type": sanitize(c.get("type", "")),
-            "status": c.get("status", ""),
-            "message": sanitize(c.get("message", ""), max_len=500),
+    try:
+        raw = api.get_namespaced_custom_object(
+            group=_TKC_GROUP, version=_TKC_VERSION,
+            namespace=namespace, plural=_TKC_PLURAL, name=name,
+        )
+        status = raw.get("status", {})
+        conditions = [
+            {
+                "type": sanitize(c.get("type", "")),
+                "status": c.get("status", ""),
+                "message": sanitize(c.get("message", ""), max_len=500),
+            }
+            for c in status.get("conditions", [])
+        ]
+        return {
+            "name": name,
+            "namespace": namespace,
+            "phase": status.get("phase"),
+            "k8s_version": raw["spec"]["topology"].get("version"),
+            "control_plane_replicas": raw["spec"]["topology"]["controlPlane"].get("replicas"),
+            "worker_replicas": raw["spec"]["topology"]["workers"]["machineDeployments"][0].get("replicas"),
+            "conditions": conditions,
+            "infrastructure_ready": status.get("infrastructureReady", False),
+            "control_plane_ready": status.get("controlPlaneReady", False),
         }
-        for c in status.get("conditions", [])
-    ]
-    return {
-        "name": name,
-        "namespace": namespace,
-        "phase": status.get("phase"),
-        "k8s_version": raw["spec"]["topology"].get("version"),
-        "control_plane_replicas": raw["spec"]["topology"]["controlPlane"].get("replicas"),
-        "worker_replicas": raw["spec"]["topology"]["workers"]["machineDeployments"][0].get("replicas"),
-        "conditions": conditions,
-        "infrastructure_ready": status.get("infrastructureReady", False),
-        "control_plane_ready": status.get("controlPlaneReady", False),
-    }
+    finally:
+        api.api_client.close()
 
 
 def get_tkc_available_versions(si: ServiceInstance, namespace: str) -> dict:
@@ -147,9 +153,8 @@ def get_tkc_available_versions(si: ServiceInstance, namespace: str) -> dict:
     from vmware_vks.k8s_connection import get_k8s_client
 
     api_client = get_k8s_client(si, namespace)
-    custom_api = k8s.client.CustomObjectsApi(api_client)
-
     try:
+        custom_api = k8s.client.CustomObjectsApi(api_client)
         raw = custom_api.list_cluster_custom_object(
             group="run.tanzu.vmware.com",
             version="v1alpha3",
@@ -166,6 +171,8 @@ def get_tkc_available_versions(si: ServiceInstance, namespace: str) -> dict:
     except Exception as e:
         return {"versions": [], "error": str(e),
                 "hint": "TanzuKubernetesRelease API may not be available on this Supervisor"}
+    finally:
+        api_client.close()
 
 
 def create_tkc_cluster(
@@ -198,11 +205,14 @@ def create_tkc_cluster(
 
     manifest = yaml.safe_load(yaml_str)
     api = _get_custom_objects_api(si, namespace)
-    api.create_namespaced_custom_object(
-        group=_TKC_GROUP, version=_TKC_VERSION,
-        namespace=namespace, plural=_TKC_PLURAL, body=manifest,
-    )
-    return {"name": name, "namespace": namespace, "status": "creating", "yaml": yaml_str}
+    try:
+        api.create_namespaced_custom_object(
+            group=_TKC_GROUP, version=_TKC_VERSION,
+            namespace=namespace, plural=_TKC_PLURAL, body=manifest,
+        )
+        return {"name": name, "namespace": namespace, "status": "creating", "yaml": yaml_str}
+    finally:
+        api.api_client.close()
 
 
 def scale_tkc_cluster(
@@ -212,20 +222,23 @@ def scale_tkc_cluster(
     if worker_count < 1:
         raise ValueError(f"worker_count must be >= 1, got {worker_count}")
     api = _get_custom_objects_api(si, namespace)
-    patch = {
-        "spec": {
-            "topology": {
-                "workers": {
-                    "machineDeployments": [{"name": "worker-pool", "replicas": worker_count}]
+    try:
+        patch = {
+            "spec": {
+                "topology": {
+                    "workers": {
+                        "machineDeployments": [{"name": "worker-pool", "replicas": worker_count}]
+                    }
                 }
             }
         }
-    }
-    api.patch_namespaced_custom_object(
-        group=_TKC_GROUP, version=_TKC_VERSION,
-        namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
-    )
-    return {"name": name, "namespace": namespace, "worker_count": worker_count, "status": "scaling"}
+        api.patch_namespaced_custom_object(
+            group=_TKC_GROUP, version=_TKC_VERSION,
+            namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
+        )
+        return {"name": name, "namespace": namespace, "worker_count": worker_count, "status": "scaling"}
+    finally:
+        api.api_client.close()
 
 
 def upgrade_tkc_cluster(
@@ -233,12 +246,15 @@ def upgrade_tkc_cluster(
 ) -> dict:
     """Upgrade TKC cluster K8s version."""
     api = _get_custom_objects_api(si, namespace)
-    patch = {"spec": {"topology": {"version": k8s_version}}}
-    api.patch_namespaced_custom_object(
-        group=_TKC_GROUP, version=_TKC_VERSION,
-        namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
-    )
-    return {"name": name, "namespace": namespace, "new_version": k8s_version, "status": "upgrading"}
+    try:
+        patch = {"spec": {"topology": {"version": k8s_version}}}
+        api.patch_namespaced_custom_object(
+            group=_TKC_GROUP, version=_TKC_VERSION,
+            namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
+        )
+        return {"name": name, "namespace": namespace, "new_version": k8s_version, "status": "upgrading"}
+    finally:
+        api.api_client.close()
 
 
 def _check_running_workloads(si: ServiceInstance, name: str, namespace: str) -> list[dict]:
@@ -255,31 +271,34 @@ def _check_running_workloads(si: ServiceInstance, name: str, namespace: str) -> 
         try:
             cfg = k8s.config.load_kube_config(config_file=tmpfile)
             api_client = k8s.client.ApiClient(configuration=cfg)
-            apps_api = k8s.client.AppsV1Api(api_client)
-            workloads = []
-            for deploy in apps_api.list_deployment_for_all_namespaces().items:
-                if deploy.status.ready_replicas and deploy.status.ready_replicas > 0:
-                    workloads.append({
-                        "kind": "Deployment",
-                        "name": deploy.metadata.name,
-                        "namespace": deploy.metadata.namespace,
-                    })
-            for ss in apps_api.list_stateful_set_for_all_namespaces().items:
-                if ss.status.ready_replicas and ss.status.ready_replicas > 0:
-                    workloads.append({
-                        "kind": "StatefulSet",
-                        "name": ss.metadata.name,
-                        "namespace": ss.metadata.namespace,
-                    })
-            for ds in apps_api.list_daemon_set_for_all_namespaces().items:
-                if ds.status and ds.status.number_ready and ds.status.number_ready > 0:
-                    workloads.append({
-                        "kind": "DaemonSet",
-                        "name": ds.metadata.name,
-                        "namespace": ds.metadata.namespace,
-                        "ready": ds.status.number_ready,
-                    })
-            return workloads
+            try:
+                apps_api = k8s.client.AppsV1Api(api_client)
+                workloads = []
+                for deploy in apps_api.list_deployment_for_all_namespaces().items:
+                    if deploy.status.ready_replicas and deploy.status.ready_replicas > 0:
+                        workloads.append({
+                            "kind": "Deployment",
+                            "name": deploy.metadata.name,
+                            "namespace": deploy.metadata.namespace,
+                        })
+                for ss in apps_api.list_stateful_set_for_all_namespaces().items:
+                    if ss.status.ready_replicas and ss.status.ready_replicas > 0:
+                        workloads.append({
+                            "kind": "StatefulSet",
+                            "name": ss.metadata.name,
+                            "namespace": ss.metadata.namespace,
+                        })
+                for ds in apps_api.list_daemon_set_for_all_namespaces().items:
+                    if ds.status and ds.status.number_ready and ds.status.number_ready > 0:
+                        workloads.append({
+                            "kind": "DaemonSet",
+                            "name": ds.metadata.name,
+                            "namespace": ds.metadata.namespace,
+                            "ready": ds.status.number_ready,
+                        })
+                return workloads
+            finally:
+                api_client.close()
         finally:
             Path(tmpfile).unlink(missing_ok=True)
     except Exception as e:

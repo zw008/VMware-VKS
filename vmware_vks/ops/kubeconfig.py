@@ -24,38 +24,41 @@ def get_tkc_kubeconfig_str(si: ServiceInstance, cluster_name: str, namespace: st
     from vmware_vks.k8s_connection import get_k8s_client
 
     api_client = get_k8s_client(si, namespace)
-    custom_api = k8s.client.CustomObjectsApi(api_client)
+    try:
+        custom_api = k8s.client.CustomObjectsApi(api_client)
 
-    cluster = custom_api.get_namespaced_custom_object(
-        group="cluster.x-k8s.io", version="v1beta1",
-        namespace=namespace, plural="clusters", name=cluster_name,
-    )
-
-    control_plane_endpoint = cluster.get("spec", {}).get("controlPlaneEndpoint", {})
-    host = control_plane_endpoint.get("host", "")
-    port = control_plane_endpoint.get("port", 6443)
-
-    if not host:
-        raise RuntimeError(
-            f"TKC cluster '{cluster_name}' control plane endpoint not available. "
-            "Is the cluster fully provisioned?"
+        cluster = custom_api.get_namespaced_custom_object(
+            group="cluster.x-k8s.io", version="v1beta1",
+            namespace=namespace, plural="clusters", name=cluster_name,
         )
 
-    token = si.content.sessionManager.currentSession.key
-    kubeconfig = {
-        "apiVersion": "v1",
-        "kind": "Config",
-        "clusters": [{"name": cluster_name, "cluster": {
-            "server": f"https://{host}:{port}",
-            "insecure-skip-tls-verify": True,
-        }}],
-        "users": [{"name": "vsphere-user", "user": {"token": token}}],
-        "contexts": [{"name": f"{cluster_name}-context", "context": {
-            "cluster": cluster_name, "user": "vsphere-user",
-        }}],
-        "current-context": f"{cluster_name}-context",
-    }
-    return _yaml.dump(kubeconfig)
+        control_plane_endpoint = cluster.get("spec", {}).get("controlPlaneEndpoint", {})
+        host = control_plane_endpoint.get("host", "")
+        port = control_plane_endpoint.get("port", 6443)
+
+        if not host:
+            raise RuntimeError(
+                f"TKC cluster '{cluster_name}' control plane endpoint not available. "
+                "Is the cluster fully provisioned?"
+            )
+
+        token = si.content.sessionManager.currentSession.key
+        kubeconfig = {
+            "apiVersion": "v1",
+            "kind": "Config",
+            "clusters": [{"name": cluster_name, "cluster": {
+                "server": f"https://{host}:{port}",
+                "insecure-skip-tls-verify": True,
+            }}],
+            "users": [{"name": "vsphere-user", "user": {"token": token}}],
+            "contexts": [{"name": f"{cluster_name}-context", "context": {
+                "cluster": cluster_name, "user": "vsphere-user",
+            }}],
+            "current-context": f"{cluster_name}-context",
+        }
+        return _yaml.dump(kubeconfig)
+    finally:
+        api_client.close()
 
 
 def write_kubeconfig(

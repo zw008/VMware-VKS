@@ -1,3 +1,11 @@
+## v1.5.14 (2026-04-21)
+
+**Bug fixes from code review by @yjs-2026 (follow-up)**
+
+- **fix:** `tkc.py` — all 8 functions using K8s ApiClient now close it via try/finally, preventing urllib3 connection pool leaks in long-lived MCP servers
+- **fix:** `storage.py` — same ApiClient leak fix for `list_namespace_storage_usage`
+- **fix:** `kubeconfig.py` — same ApiClient leak fix for `get_tkc_kubeconfig_str`
+
 ## v1.5.13 (2026-04-21)
 
 - Align with VMware skill family v1.5.13 (code review bug fixes)

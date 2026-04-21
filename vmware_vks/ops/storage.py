@@ -14,17 +14,19 @@ def list_namespace_storage_usage(si: ServiceInstance, namespace: str) -> dict:
     from vmware_vks.k8s_connection import get_k8s_client
 
     api_client = get_k8s_client(si, namespace)
-    core_api = k8s.client.CoreV1Api(api_client)
-
-    pvcs = core_api.list_namespaced_persistent_volume_claim(namespace=namespace)
-    items = [
-        {
-            "name": sanitize(pvc.metadata.name),
-            "namespace": sanitize(pvc.metadata.namespace),
-            "status": pvc.status.phase,
-            "capacity": pvc.status.capacity.get("storage") if pvc.status.capacity else None,
-            "storage_class": pvc.spec.storage_class_name,
-        }
-        for pvc in pvcs.items
-    ]
-    return {"namespace": namespace, "pvc_count": len(items), "pvcs": items}
+    try:
+        core_api = k8s.client.CoreV1Api(api_client)
+        pvcs = core_api.list_namespaced_persistent_volume_claim(namespace=namespace)
+        items = [
+            {
+                "name": sanitize(pvc.metadata.name),
+                "namespace": sanitize(pvc.metadata.namespace),
+                "status": pvc.status.phase,
+                "capacity": pvc.status.capacity.get("storage") if pvc.status.capacity else None,
+                "storage_class": pvc.spec.storage_class_name,
+            }
+            for pvc in pvcs.items
+        ]
+        return {"namespace": namespace, "pvc_count": len(items), "pvcs": items}
+    finally:
+        api_client.close()
