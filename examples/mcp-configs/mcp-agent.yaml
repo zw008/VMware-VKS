@@ -4,10 +4,8 @@
 mcp:
   servers:
     vmware-vks:
-      command: uvx
+      command: vmware-vks
       args:
-        - "--from"
-        - vmware-vks
-        - vmware-vks-mcp
+        - mcp
       env:
         VMWARE_VKS_CONFIG: ~/.vmware-vks/config.yaml

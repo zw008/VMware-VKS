@@ -184,12 +184,14 @@ vmware-vks storage -n <namespace>
 
 ## MCP Server
 
-```bash
-# Run directly
-vmware-vks-mcp
+**After `uv tool install vmware-vks`, start the MCP server with one command** (v1.5.15+):
 
-# Or via uvx (recommended when installed with uv tool install)
-uvx --from vmware-vks vmware-vks-mcp
+```bash
+# Recommended — single command, no network re-resolve
+vmware-vks mcp
+
+# With a custom config path
+VMWARE_VKS_CONFIG=/path/to/config.yaml vmware-vks mcp
 ```
 
 ### Agent Configuration
@@ -200,8 +202,8 @@ Add to your AI agent's MCP config:
 {
   "mcpServers": {
     "vmware-vks": {
-      "command": "uvx",
-      "args": ["--from", "vmware-vks", "vmware-vks-mcp"],
+      "command": "vmware-vks",
+      "args": ["mcp"],
       "env": {
         "VMWARE_VKS_CONFIG": "~/.vmware-vks/config.yaml"
       }
@@ -209,6 +211,22 @@ Add to your AI agent's MCP config:
   }
 }
 ```
+
+<details>
+<summary>Alternative: uvx (no install) or legacy entry point</summary>
+
+```bash
+# Run without installing (requires PyPI access each launch)
+uvx --from vmware-vks vmware-vks mcp
+
+# Legacy entry point (still works, kept for backward compatibility)
+vmware-vks-mcp
+```
+
+> **Behind a corporate TLS proxy?** uvx may fail with `invalid peer certificate: UnknownIssuer`.
+> Use the recommended `vmware-vks mcp` form above (no network needed), or set `UV_NATIVE_TLS=true`.
+
+</details>
 
 ## Safety
 

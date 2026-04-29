@@ -6,4 +6,6 @@ targets:
     host: vcenter.example.com
     username: administrator@vsphere.local
     port: 443
-    verify_ssl: false
+    # verify_ssl: true is the default (v1.5.15+). Set to false ONLY for
+    # self-signed certs in lab/dev environments — disables SSL verification.
+    # verify_ssl: false

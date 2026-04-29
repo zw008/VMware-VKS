@@ -70,8 +70,8 @@ For Claude Code / Cursor users who prefer structured tool calls, add to `~/.clau
 {
   "mcpServers": {
     "vmware-vks": {
-      "command": "uvx",
-      "args": ["--from", "vmware-vks", "vmware-vks-mcp"],
+      "command": "vmware-vks",
+      "args": ["mcp"],
       "env": {
         "VMWARE_VKS_CONFIG": "/Users/you/.vmware-vks/config.yaml",
         "VMWARE_MYVENTER_PASSWORD": "your-password"
@@ -80,6 +80,11 @@ For Claude Code / Cursor users who prefer structured tool calls, add to `~/.clau
   }
 }
 ```
+
+> v1.5.15+ recommends the single-command form `vmware-vks mcp`. Pre-1.5.15 used
+> `uvx --from vmware-vks vmware-vks-mcp`, which still works but re-resolves from
+> PyPI on each launch and breaks behind corporate TLS proxies. The legacy
+> `vmware-vks-mcp` entry point is also kept for backward compatibility.
 
 ## Usage Mode
 

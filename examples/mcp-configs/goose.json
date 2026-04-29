@@ -1,8 +1,8 @@
 {
   "name": "vmware-vks",
   "description": "VMware VKS (vSphere Kubernetes Service) management",
-  "command": "uvx",
-  "args": ["--from", "vmware-vks", "vmware-vks-mcp"],
+  "command": "vmware-vks",
+  "args": ["mcp"],
   "env": {
     "VMWARE_VKS_CONFIG": "~/.vmware-vks/config.yaml"
   }

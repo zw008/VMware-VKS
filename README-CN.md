@@ -184,12 +184,18 @@ vmware-vks storage -n <命名空间>
 
 ## MCP Server 配置
 
+**v1.5.15+ 推荐方式**：完成 `uv tool install vmware-vks` 后，**一条命令启动 MCP**：
+
+```bash
+vmware-vks mcp
+```
+
 ```json
 {
   "mcpServers": {
     "vmware-vks": {
-      "command": "uvx",
-      "args": ["--from", "vmware-vks", "vmware-vks-mcp"],
+      "command": "vmware-vks",
+      "args": ["mcp"],
       "env": {
         "VMWARE_VKS_CONFIG": "~/.vmware-vks/config.yaml"
       }
@@ -197,6 +203,22 @@ vmware-vks storage -n <命名空间>
   }
 }
 ```
+
+<details>
+<summary>备选方案：uvx（不安装）或 legacy 入口</summary>
+
+```bash
+# 不想安装，临时运行（每次需要联网 resolve 依赖）
+uvx --from vmware-vks vmware-vks mcp
+
+# 旧 entry point（仍可用，向后兼容）
+vmware-vks-mcp
+```
+
+> **公司 TLS 代理网络下？** uvx 可能报 `invalid peer certificate: UnknownIssuer`。
+> 推荐使用上面的 `vmware-vks mcp`（无需联网），或 `export UV_NATIVE_TLS=true`。
+
+</details>
 
 ## 安全性
 

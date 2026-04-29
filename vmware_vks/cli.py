@@ -22,6 +22,21 @@ kubeconfig_app = typer.Typer(help="Kubeconfig commands")
 app.add_typer(tkc_app, name="tkc")
 app.add_typer(kubeconfig_app, name="kubeconfig")
 
+
+@app.command("mcp")
+def mcp_cmd() -> None:
+    """Start the MCP server (stdio transport).
+
+    Single-command entry point for MCP clients:
+        vmware-vks mcp
+
+    Equivalent to the legacy `vmware-vks-mcp` console script.
+    """
+    from mcp_server.server import main as _mcp_main
+
+    _mcp_main()
+
+
 console = Console()
 
 
