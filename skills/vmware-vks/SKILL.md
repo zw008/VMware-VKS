@@ -76,24 +76,40 @@ vmware-vks doctor
 
 ### Deploy a New TKC Cluster
 
-1. Check compatibility → `vmware-vks supervisor check --target prod`
-2. List available K8s versions → `vmware-vks tkc versions -n dev`
-3. Create namespace (if needed) → `vmware-vks namespace create dev --cluster domain-c1 --storage-policy vSAN --cpu 16000 --memory 32768 --apply`
-4. Create TKC cluster → `vmware-vks tkc create dev-cluster -n dev --version v1.28.4+vmware.1 --control-plane 1 --workers 3 --vm-class best-effort-large --apply`
-5. Get kubeconfig → `vmware-vks kubeconfig get dev-cluster -n dev`
+**Pre-flight (judgment)**:
+- Supervisor must be vSphere 8.x+ with WCP enabled — `supervisor check` returns pass/fail. If fail, no amount of TKC commands will work; resolve at vSphere/WCP layer first.
+- K8s version: pick a TKR version that's still supported by VMware (not EOL). New clusters on EOL versions look fine until you need a CVE patch and there isn't one.
+- VM class sizing: `best-effort-*` for dev, `guaranteed-*` for prod. A `best-effort` worker can be evicted under host pressure — production workloads need guaranteed.
+- Storage policy: must already exist on the supervisor. `list_supervisor_storage_policies` first; creating a TKC against a missing policy fails after CP boot, leaving partial state.
+- Control-plane count: `1` for dev, `3` for prod (HA). Cannot upgrade from 1→3 without recreating; choose right the first time.
+- Namespace quota: TKC consumes CP + worker × (cpu, memory) from namespace quota. If quota is too tight, workers fail to schedule with no obvious error.
+
+**Steps**:
+1. `vmware-vks supervisor check --target prod` → must pass
+2. `vmware-vks tkc versions -n <ns>` → pick a non-EOL TKR
+3. (If new namespace) `vmware-vks namespace create dev --storage-policy <policy> --cpu <enough-for-cp+workers> --apply --dry-run` then real
+4. `vmware-vks tkc create dev-cluster -n dev --version <tkr> --control-plane 1 --workers 3 --vm-class best-effort-large --apply --dry-run` then real
+5. Wait for `phase=running` (typically 10-15 min); do not assume success on apply return
+6. `vmware-vks kubeconfig get dev-cluster -n dev -o ./kubeconfig` — write to file, do not paste tokens into the agent context
 
 ### Scale Workers for Load Testing
 
-1. Check current state → `vmware-vks tkc get dev-cluster -n dev`
-2. Scale up → `vmware-vks tkc scale dev-cluster -n dev --workers 6`
-3. Monitor progress → `vmware-vks tkc get dev-cluster -n dev` (watch phase)
-4. Scale back down after test
+**Judgment**: scaling is fast but reverse-scaling is destructive — workers are deleted, in-flight pods lost. Treat scale-down like a delete.
+
+1. `tkc get dev-cluster -n dev` → record current worker count and any pending pods
+2. **Scale-up**: `tkc scale dev-cluster -n dev --workers 6` → safe, additive operation
+3. Verify new workers reach `Ready` in `kubectl get nodes` before sending traffic
+4. **Scale-down**: drain pods first via `kubectl drain` on the to-be-deleted nodes, THEN `tkc scale --workers 3`. Skipping drain causes pod restarts on remaining nodes — measurable user impact.
+5. Confirm namespace quota leftover supports the new size — quota is enforced at scheduling, not at scale request
 
 ### Namespace Resource Management
 
-1. List namespaces → `vmware-vks namespace list`
-2. Check usage → `vmware-vks storage -n dev`
-3. Update quota → `vmware-vks namespace update dev --cpu 32000 --memory 65536`
+**Judgment**: quota changes are atomic but consequences are not. Reducing quota below current usage doesn't evict pods — they keep running, but no new pods schedule, looking like a "namespace is broken" symptom.
+
+1. `namespace list` → see all namespaces and their phase
+2. `storage -n dev` → check current CPU/memory/storage usage; **never reduce quota below current usage + 20% headroom**
+3. `namespace update dev --cpu <new> --memory <new> --dry-run` → preview, then real
+4. Validate by attempting a small pod scale-up; if it pends with `Insufficient cpu`, quota is still the bottleneck
 
 ## Architecture
 

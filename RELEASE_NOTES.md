@@ -1,3 +1,11 @@
+## v1.5.16 (2026-04-30)
+
+**Enterprise Harness Engineering alignment** — adapted from the Linkloud × addxai framework articles ([part 1](https://mp.weixin.qq.com/s/hz4W7ILHJ1yz_pG0Z1xP-A), [part 2](https://mp.weixin.qq.com/s/F3qYbyB3S8oIqx-Y4BrWNQ)).
+
+- **docs:** "Automation Level Reference" section in `references/capabilities.md` — every tool tagged L1-L5 per the EHE framework.
+- **docs:** Common Workflows in `SKILL.md` rewritten with pre-flight judgment for TKC deploy (storage policy + VM class + quota), worker scaling (drain before scale-down), and namespace quota changes.
+- **align:** Family version bump to v1.5.16.
+
 ## v1.5.15 (2026-04-29)
 
 **UX improvements from real user feedback**

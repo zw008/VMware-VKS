@@ -2,6 +2,23 @@
 
 Detailed capability breakdown for all 20 MCP tools.
 
+## Automation Level Reference
+
+Each operation is classified by autonomy level per the Enterprise Harness Engineering framework:
+
+| Level | Meaning | Agent autonomy | Examples in this skill |
+|:-:|---|---|---|
+| **L1** | Read-only, raw data | Always auto-run | `check_vks_compatibility`, `get_supervisor_status`, `list_supervisor_storage_policies`, `list_namespaces`, `get_namespace`, TKC list/get, kubeconfig fetch |
+| **L2** | Read + analysis / recommendation | Always auto-run | namespace quota analysis, TKC health correlation, storage policy compatibility checks |
+| **L3** | Single write — user must approve | Only after explicit confirmation; destructive ops require double-confirm + `--dry-run` | `create_namespace`, `update_namespace`, `delete_namespace`, `create_tkc`, `update_tkc`, `delete_tkc` |
+| **L4** | Multi-step plan / apply workflow | Plan generation auto; apply gated by user approval | *(roadmap — TKC fleet upgrades, multi-namespace bootstrapping plans)* |
+| **L5** | Auto-remediation from learned pattern | Pattern library only; requires `risk:low` + `reversible:true` + `repeatable:true` | *(roadmap — candidates: stuck TKC reconciliation, namespace quota bumps)* |
+
+**Notes**:
+- L1/L2 tools are always safe for agents to call without confirmation.
+- L3 tools always pass through the `@vmware_tool` decorator: connection check → policy check → audit log → double-confirm.
+- Kubeconfig retrieval (L1) returns short-lived session tokens; agents should write to file (`-o <path>`) rather than displaying tokens in conversation context.
+
 ## 1. Supervisor Layer (Read-Only)
 
 | Tool | What it returns |
