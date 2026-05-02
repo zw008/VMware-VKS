@@ -1,7 +1,9 @@
 """TanzuKubernetesCluster (TKC) lifecycle operations.
 
-Uses cluster.x-k8s.io/v1beta1 API (vSphere 8.x).
-All cluster operations go through the Supervisor K8s API endpoint (Layer 2).
+Uses cluster.x-k8s.io API (vSphere 8.x). The Supervisor's served version
+is detected at runtime — vSphere 8.0 ships v1beta1, later releases may
+expose v1 alongside it. All cluster operations go through the Supervisor
+K8s API endpoint (Layer 2).
 
 Safety:
 - delete_tkc_cluster rejects if Deployments/StatefulSets/DaemonSets are running
@@ -10,7 +12,6 @@ Safety:
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import yaml
@@ -23,8 +24,13 @@ from vmware_policy import sanitize
 _log = logging.getLogger("vmware-vks.ops.tkc")
 
 _TKC_GROUP = "cluster.x-k8s.io"
-_TKC_VERSION = "v1beta1"
+_TKC_VERSION_FALLBACK = "v1beta1"
+_TKC_VERSION_PREFERENCE = ("v1", "v1beta1")  # probe order: prefer v1 if served
 _TKC_PLURAL = "clusters"
+
+# Per-host cache: vCenter host → resolved API version. Keeps repeated calls
+# from re-probing the discovery API on every TKC operation.
+_version_cache: dict[str, str] = {}
 
 
 def _get_custom_objects_api(si: ServiceInstance, namespace: str):
@@ -35,6 +41,45 @@ def _get_custom_objects_api(si: ServiceInstance, namespace: str):
     return k8s.client.CustomObjectsApi(api_client)
 
 
+def _resolve_tkc_version(si: ServiceInstance, namespace: str) -> str:
+    """Probe the Supervisor's served cluster.x-k8s.io versions and pick one.
+
+    Prefers v1 when available (vSphere releases that ship Cluster API v1),
+    falls back to v1beta1 (vSphere 8.0). Result is cached per vCenter host.
+    """
+    host = getattr(getattr(si, "_stub", None), "host", "default")
+    cached = _version_cache.get(host)
+    if cached:
+        return cached
+
+    import kubernetes as k8s
+    from vmware_vks.k8s_connection import get_k8s_client
+
+    api_client = get_k8s_client(si, namespace)
+    try:
+        apis = k8s.client.ApisApi(api_client)
+        groups = apis.get_api_versions().groups
+        served = set()
+        for g in groups:
+            if g.name == _TKC_GROUP:
+                served = {v.version for v in g.versions}
+                break
+        for preferred in _TKC_VERSION_PREFERENCE:
+            if preferred in served:
+                _version_cache[host] = preferred
+                return preferred
+    except Exception as e:
+        _log.warning(
+            "TKC API discovery failed on %s: %s — falling back to %s",
+            host, e, _TKC_VERSION_FALLBACK,
+        )
+    finally:
+        api_client.close()
+
+    _version_cache[host] = _TKC_VERSION_FALLBACK
+    return _TKC_VERSION_FALLBACK
+
+
 def generate_tkc_yaml(
     name: str,
     namespace: str,
@@ -43,15 +88,20 @@ def generate_tkc_yaml(
     control_plane_count: int,
     worker_count: int,
     storage_class: str,
+    api_version: str = _TKC_VERSION_FALLBACK,
 ) -> str:
-    """Generate TKC cluster YAML (cluster.x-k8s.io/v1beta1 for vSphere 8.x)."""
+    """Generate TKC cluster YAML.
+
+    api_version defaults to v1beta1 (vSphere 8.0). Pass "v1" when targeting
+    Supervisors that have promoted Cluster API to v1.
+    """
     if worker_count < 1:
         raise ValueError(f"worker_count must be >= 1, got {worker_count}")
     if control_plane_count not in (1, 3):
         raise ValueError(f"control_plane_count must be 1 or 3, got {control_plane_count}")
 
     manifest = {
-        "apiVersion": f"{_TKC_GROUP}/{_TKC_VERSION}",
+        "apiVersion": f"{_TKC_GROUP}/{api_version}",
         "kind": "Cluster",
         "metadata": {"name": name, "namespace": namespace},
         "spec": {
@@ -89,16 +139,17 @@ def generate_tkc_yaml(
 def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict:
     """List TKC clusters in a namespace (or all namespaces)."""
     ns = namespace or "default"
+    version = _resolve_tkc_version(si, ns)
     api = _get_custom_objects_api(si, ns)
     try:
         if namespace:
             raw = api.list_namespaced_custom_object(
-                group=_TKC_GROUP, version=_TKC_VERSION,
+                group=_TKC_GROUP, version=version,
                 namespace=namespace, plural=_TKC_PLURAL,
             )
         else:
             raw = api.list_cluster_custom_object(
-                group=_TKC_GROUP, version=_TKC_VERSION, plural=_TKC_PLURAL,
+                group=_TKC_GROUP, version=version, plural=_TKC_PLURAL,
             )
         items = raw.get("items", [])
         clusters = [
@@ -117,10 +168,11 @@ def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict
 
 def get_tkc_cluster(si: ServiceInstance, name: str, namespace: str) -> dict:
     """Get detailed TKC cluster info."""
+    version = _resolve_tkc_version(si, namespace)
     api = _get_custom_objects_api(si, namespace)
     try:
         raw = api.get_namespaced_custom_object(
-            group=_TKC_GROUP, version=_TKC_VERSION,
+            group=_TKC_GROUP, version=version,
             namespace=namespace, plural=_TKC_PLURAL, name=name,
         )
         status = raw.get("status", {})
@@ -187,10 +239,12 @@ def create_tkc_cluster(
     dry_run: bool = True,
 ) -> dict:
     """Create a TKC cluster. dry_run=True returns YAML plan without applying."""
+    version = _resolve_tkc_version(si, namespace) if not dry_run else _TKC_VERSION_FALLBACK
     yaml_str = generate_tkc_yaml(
         name=name, namespace=namespace, k8s_version=k8s_version,
         vm_class=vm_class, control_plane_count=control_plane_count,
         worker_count=worker_count, storage_class=storage_class,
+        api_version=version,
     )
 
     if dry_run:
@@ -207,7 +261,7 @@ def create_tkc_cluster(
     api = _get_custom_objects_api(si, namespace)
     try:
         api.create_namespaced_custom_object(
-            group=_TKC_GROUP, version=_TKC_VERSION,
+            group=_TKC_GROUP, version=version,
             namespace=namespace, plural=_TKC_PLURAL, body=manifest,
         )
         return {"name": name, "namespace": namespace, "status": "creating", "yaml": yaml_str}
@@ -221,6 +275,7 @@ def scale_tkc_cluster(
     """Scale TKC worker node count."""
     if worker_count < 1:
         raise ValueError(f"worker_count must be >= 1, got {worker_count}")
+    version = _resolve_tkc_version(si, namespace)
     api = _get_custom_objects_api(si, namespace)
     try:
         patch = {
@@ -233,7 +288,7 @@ def scale_tkc_cluster(
             }
         }
         api.patch_namespaced_custom_object(
-            group=_TKC_GROUP, version=_TKC_VERSION,
+            group=_TKC_GROUP, version=version,
             namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
         )
         return {"name": name, "namespace": namespace, "worker_count": worker_count, "status": "scaling"}
@@ -245,11 +300,12 @@ def upgrade_tkc_cluster(
     si: ServiceInstance, name: str, namespace: str, k8s_version: str
 ) -> dict:
     """Upgrade TKC cluster K8s version."""
+    version = _resolve_tkc_version(si, namespace)
     api = _get_custom_objects_api(si, namespace)
     try:
         patch = {"spec": {"topology": {"version": k8s_version}}}
         api.patch_namespaced_custom_object(
-            group=_TKC_GROUP, version=_TKC_VERSION,
+            group=_TKC_GROUP, version=version,
             namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
         )
         return {"name": name, "namespace": namespace, "new_version": k8s_version, "status": "upgrading"}
@@ -258,49 +314,49 @@ def upgrade_tkc_cluster(
 
 
 def _check_running_workloads(si: ServiceInstance, name: str, namespace: str) -> list[dict]:
-    """Check for running Deployments/StatefulSets in the TKC cluster."""
-    from vmware_vks.ops.kubeconfig import get_tkc_kubeconfig_str
+    """Check for running Deployments/StatefulSets in the TKC cluster.
+
+    Loads the TKC kubeconfig from an in-memory dict to keep the bearer
+    token off disk.
+    """
+    from vmware_vks.ops.kubeconfig import build_tkc_kubeconfig
     import kubernetes as k8s
-    import tempfile
 
     try:
-        kubeconfig_str = get_tkc_kubeconfig_str(si, name, namespace)
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(kubeconfig_str)
-            tmpfile = f.name
+        cfg_dict = build_tkc_kubeconfig(si, name, namespace)
+        client_cfg = k8s.client.Configuration()
+        k8s.config.load_kube_config_from_dict(
+            config_dict=cfg_dict, client_configuration=client_cfg
+        )
+        api_client = k8s.client.ApiClient(configuration=client_cfg)
         try:
-            cfg = k8s.config.load_kube_config(config_file=tmpfile)
-            api_client = k8s.client.ApiClient(configuration=cfg)
-            try:
-                apps_api = k8s.client.AppsV1Api(api_client)
-                workloads = []
-                for deploy in apps_api.list_deployment_for_all_namespaces().items:
-                    if deploy.status.ready_replicas and deploy.status.ready_replicas > 0:
-                        workloads.append({
-                            "kind": "Deployment",
-                            "name": deploy.metadata.name,
-                            "namespace": deploy.metadata.namespace,
-                        })
-                for ss in apps_api.list_stateful_set_for_all_namespaces().items:
-                    if ss.status.ready_replicas and ss.status.ready_replicas > 0:
-                        workloads.append({
-                            "kind": "StatefulSet",
-                            "name": ss.metadata.name,
-                            "namespace": ss.metadata.namespace,
-                        })
-                for ds in apps_api.list_daemon_set_for_all_namespaces().items:
-                    if ds.status and ds.status.number_ready and ds.status.number_ready > 0:
-                        workloads.append({
-                            "kind": "DaemonSet",
-                            "name": ds.metadata.name,
-                            "namespace": ds.metadata.namespace,
-                            "ready": ds.status.number_ready,
-                        })
-                return workloads
-            finally:
-                api_client.close()
+            apps_api = k8s.client.AppsV1Api(api_client)
+            workloads = []
+            for deploy in apps_api.list_deployment_for_all_namespaces().items:
+                if deploy.status.ready_replicas and deploy.status.ready_replicas > 0:
+                    workloads.append({
+                        "kind": "Deployment",
+                        "name": deploy.metadata.name,
+                        "namespace": deploy.metadata.namespace,
+                    })
+            for ss in apps_api.list_stateful_set_for_all_namespaces().items:
+                if ss.status.ready_replicas and ss.status.ready_replicas > 0:
+                    workloads.append({
+                        "kind": "StatefulSet",
+                        "name": ss.metadata.name,
+                        "namespace": ss.metadata.namespace,
+                    })
+            for ds in apps_api.list_daemon_set_for_all_namespaces().items:
+                if ds.status and ds.status.number_ready and ds.status.number_ready > 0:
+                    workloads.append({
+                        "kind": "DaemonSet",
+                        "name": ds.metadata.name,
+                        "namespace": ds.metadata.namespace,
+                        "ready": ds.status.number_ready,
+                    })
+            return workloads
         finally:
-            Path(tmpfile).unlink(missing_ok=True)
+            api_client.close()
     except Exception as e:
         _log.warning("Could not verify workloads in cluster '%s': %s", name, e)
         raise RuntimeError(
@@ -345,9 +401,10 @@ def delete_tkc_cluster(
             "warning": "This will permanently delete the TKC cluster.",
         }
 
+    version = _resolve_tkc_version(si, namespace)
     api = _get_custom_objects_api(si, namespace)
     api.delete_namespaced_custom_object(
-        group=_TKC_GROUP, version=_TKC_VERSION,
+        group=_TKC_GROUP, version=version,
         namespace=namespace, plural=_TKC_PLURAL, name=name,
     )
     return {"name": name, "namespace": namespace, "status": "deleting"}

@@ -1,3 +1,15 @@
+## v1.5.18 (2026-05-02)
+
+**Security + compatibility fixes from external code review (2026-05-02 by Hermes Agent / MiniMax-M2.7)**
+
+- **security:** `k8s_connection.py` and `ops/tkc.py::_check_running_workloads` — kubeconfig (with vCenter session bearer token) is no longer written to a temp file. New `_build_supervisor_kubeconfig()` and `ops/kubeconfig.py::build_tkc_kubeconfig()` return dicts; the kubernetes client loads them via `load_kube_config_from_dict()`. Eliminates the TOCTOU window where a credential file existed on disk between create and unlink.
+- **compat:** `ops/tkc.py` — TKC API version is now resolved at runtime via the K8s discovery API. `_resolve_tkc_version()` prefers `cluster.x-k8s.io/v1` when the Supervisor serves it, falls back to `v1beta1` (vSphere 8.0). Result is cached per vCenter host. `generate_tkc_yaml()` accepts an optional `api_version` parameter (defaults to `v1beta1` for backwards compatibility). vSphere 8.0 environments are unaffected; later releases auto-upgrade with no code change.
+- **dev:** `[dependency-groups]` block aligned to the canonical family set (`pytest>=8.0,<10.0`, `pytest-cov`, `ruff`).
+- **test:** new `tests/eval/regression/test_release_blockers.py` enforces that the wheel ships `mcp_server`, every module imports cleanly, the Typer app loads, and runtime names like `re.match()` always have a matching `import re`.
+- **align:** Family version bump to v1.5.18.
+
+Tests: 5/5 release-blocker evals + 3/3 kubeconfig + 2/2 connection pass; pre-existing `test_no_destructive_ops` failure on `delete_namespace` unchanged from v1.5.17.
+
 ## v1.5.17 (2026-05-01)
 
 **Family alignment** — no source changes in this skill.

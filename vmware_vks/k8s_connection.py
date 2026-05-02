@@ -6,9 +6,7 @@ Used for TKC CR lifecycle (create/get/delete/scale/upgrade).
 from __future__ import annotations
 
 import logging
-import tempfile
-from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
@@ -20,22 +18,19 @@ def _vcenter_host(si: ServiceInstance) -> str:
     return si._stub.host.split(":")[0]
 
 
-def get_supervisor_kubeconfig_str(si: ServiceInstance, namespace: str) -> str:
-    """Build a kubeconfig YAML string for the Supervisor API endpoint.
+def _build_supervisor_kubeconfig(si: ServiceInstance, namespace: str) -> dict[str, Any]:
+    """Build kubeconfig as a dict for the Supervisor API endpoint.
 
     Uses the vCenter session token as bearer token and queries the
     namespace-management API for the cluster API endpoint.
     """
     from vmware_vks.ops.supervisor import _rest_get
-    import yaml as _yaml
 
-    # Get supervisor clusters to find API endpoint
     try:
         clusters = _rest_get(si, "/vcenter/namespace-management/clusters")
         running = [c for c in clusters if c.get("config_status") == "RUNNING"]
         if not running:
             raise RuntimeError("No running Supervisor clusters found.")
-        # Use api_server_cluster_endpoint from the first running cluster
         cluster_data = _rest_get(
             si,
             f"/vcenter/namespace-management/clusters/{running[0]['cluster']}"
@@ -51,7 +46,7 @@ def get_supervisor_kubeconfig_str(si: ServiceInstance, namespace: str) -> str:
 
     token = si.content.sessionManager.currentSession.key
 
-    kubeconfig = {
+    return {
         "apiVersion": "v1",
         "kind": "Config",
         "clusters": [{
@@ -72,25 +67,33 @@ def get_supervisor_kubeconfig_str(si: ServiceInstance, namespace: str) -> str:
         }],
         "current-context": "supervisor-context",
     }
-    return _yaml.dump(kubeconfig)
+
+
+def get_supervisor_kubeconfig_str(si: ServiceInstance, namespace: str) -> str:
+    """Build a kubeconfig YAML string for the Supervisor API endpoint.
+
+    Used by CLI/MCP `kubeconfig get` to export to a user-chosen path.
+    For in-process kubernetes client use, prefer get_k8s_client which
+    keeps the bearer token in memory only.
+    """
+    import yaml as _yaml
+    return _yaml.dump(_build_supervisor_kubeconfig(si, namespace))
 
 
 def get_k8s_client(si: ServiceInstance, namespace: str):
     """Get a kubernetes ApiClient connected to the Supervisor namespace.
 
-    Returns a kubernetes.client.ApiClient instance.
+    Loads kubeconfig from an in-memory dict via load_kube_config_from_dict —
+    the bearer token never touches disk, eliminating the temp-file TOCTOU
+    window of the previous implementation.
+
     Caller MUST close the client when done (use as context manager or call .close()).
     """
     import kubernetes as k8s
 
-    kubeconfig_str = get_supervisor_kubeconfig_str(si, namespace)
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-        f.write(kubeconfig_str)
-        tmpfile = f.name
-
-    try:
-        cfg = k8s.config.load_kube_config(config_file=tmpfile)
-        return k8s.client.ApiClient(configuration=cfg)
-    finally:
-        Path(tmpfile).unlink(missing_ok=True)
+    cfg_dict = _build_supervisor_kubeconfig(si, namespace)
+    client_cfg = k8s.client.Configuration()
+    k8s.config.load_kube_config_from_dict(
+        config_dict=cfg_dict, client_configuration=client_cfg
+    )
+    return k8s.client.ApiClient(configuration=client_cfg)

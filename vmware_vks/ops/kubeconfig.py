@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
@@ -17,18 +17,25 @@ def get_supervisor_kubeconfig_str(si: ServiceInstance, namespace: str) -> str:
     return _get(si, namespace)
 
 
-def get_tkc_kubeconfig_str(si: ServiceInstance, cluster_name: str, namespace: str) -> str:
-    """Get kubeconfig YAML string for a TKC cluster via Supervisor API."""
-    import kubernetes as k8s
-    import yaml as _yaml
-    from vmware_vks.k8s_connection import get_k8s_client
+def build_tkc_kubeconfig(
+    si: ServiceInstance, cluster_name: str, namespace: str
+) -> dict[str, Any]:
+    """Build kubeconfig as a dict for a TKC cluster via the Supervisor API.
 
+    Returning a dict (vs. a YAML string) lets in-process callers feed it
+    directly into kubernetes.config.load_kube_config_from_dict and keep
+    the bearer token in memory.
+    """
+    import kubernetes as k8s
+    from vmware_vks.k8s_connection import get_k8s_client
+    from vmware_vks.ops.tkc import _resolve_tkc_version
+
+    version = _resolve_tkc_version(si, namespace)
     api_client = get_k8s_client(si, namespace)
     try:
         custom_api = k8s.client.CustomObjectsApi(api_client)
-
         cluster = custom_api.get_namespaced_custom_object(
-            group="cluster.x-k8s.io", version="v1beta1",
+            group="cluster.x-k8s.io", version=version,
             namespace=namespace, plural="clusters", name=cluster_name,
         )
 
@@ -43,7 +50,7 @@ def get_tkc_kubeconfig_str(si: ServiceInstance, cluster_name: str, namespace: st
             )
 
         token = si.content.sessionManager.currentSession.key
-        kubeconfig = {
+        return {
             "apiVersion": "v1",
             "kind": "Config",
             "clusters": [{"name": cluster_name, "cluster": {
@@ -56,9 +63,18 @@ def get_tkc_kubeconfig_str(si: ServiceInstance, cluster_name: str, namespace: st
             }}],
             "current-context": f"{cluster_name}-context",
         }
-        return _yaml.dump(kubeconfig)
     finally:
         api_client.close()
+
+
+def get_tkc_kubeconfig_str(si: ServiceInstance, cluster_name: str, namespace: str) -> str:
+    """Get kubeconfig YAML string for a TKC cluster via Supervisor API.
+
+    Used when the kubeconfig must be exported to a user-chosen path or
+    displayed. For in-process use, prefer build_tkc_kubeconfig.
+    """
+    import yaml as _yaml
+    return _yaml.dump(build_tkc_kubeconfig(si, cluster_name, namespace))
 
 
 def write_kubeconfig(
