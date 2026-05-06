@@ -1,3 +1,11 @@
+## v1.5.19 (2026-05-06)
+
+**Critical fix** — `delete_tkc_cluster` no longer leaks the Kubernetes ApiClient connection.
+
+- **fix(ops):** `vmware_vks/ops/tkc.py:delete_tkc_cluster` now wraps `api.delete_namespaced_custom_object(...)` in `try/finally: api.api_client.close()`. Sibling functions (list/get/scale/upgrade/create) were already correct — only the delete path was missing the cleanup. Repeated deletes previously could exhaust the ApiClient connection pool (yjs review 2026-05-06).
+- **smoke:** Family `scripts/family_smoke.sh` now recursively walks every Typer subcommand to trigger lazy imports.
+- **align:** Family version bump to v1.5.19.
+
 ## v1.5.18 (2026-05-02)
 
 **Security + compatibility fixes from external code review (2026-05-02 by Hermes Agent / MiniMax-M2.7)**

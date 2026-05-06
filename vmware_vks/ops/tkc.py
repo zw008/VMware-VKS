@@ -403,8 +403,11 @@ def delete_tkc_cluster(
 
     version = _resolve_tkc_version(si, namespace)
     api = _get_custom_objects_api(si, namespace)
-    api.delete_namespaced_custom_object(
-        group=_TKC_GROUP, version=version,
-        namespace=namespace, plural=_TKC_PLURAL, name=name,
-    )
-    return {"name": name, "namespace": namespace, "status": "deleting"}
+    try:
+        api.delete_namespaced_custom_object(
+            group=_TKC_GROUP, version=version,
+            namespace=namespace, plural=_TKC_PLURAL, name=name,
+        )
+        return {"name": name, "namespace": namespace, "status": "deleting"}
+    finally:
+        api.api_client.close()
