@@ -268,10 +268,17 @@ The namespace delete guard prevents deletion when TKC clusters exist inside. Del
 
 ## Version Compatibility
 
-| vSphere | Support | Notes |
+| vSphere / VCF | Support | Notes |
 |---------|---------|-------|
+| 9.0 / 9.1 | ⚠ Not yet verified | Supervisor/WCP API surface in vSphere 9 not tested. File issues with `check_vks_compatibility` output if you run this on VCF 9. |
 | 8.0+ | Full | Workload Management APIs available |
 | 7.x | Not supported | WCP API surface is different; use vSphere 8.x |
+
+#### Official Broadcom References
+
+- **SDKs**: <https://developer.broadcom.com/sdks> — VCF Python SDK (unified SDK in VCF 9+)
+- **REST APIs**: <https://developer.broadcom.com/xapis> — vSphere Automation API (Workload Management endpoints)
+- **CLI Tools**: <https://developer.broadcom.com/tools> — kubectl-vsphere, PowerCLI 9.1
 
 ## Related Projects
 

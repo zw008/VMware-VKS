@@ -1,3 +1,11 @@
+## v1.5.23 (2026-05-19)
+
+**VCF 9.0 / 9.1 — partial / unverified compatibility note.**
+
+- **docs:** README Version Compatibility table now explicitly lists vSphere 9.0 / 9.1 as ⚠ Not yet verified — Workload Management (Supervisor / WCP) API surface in vSphere 9 has not been tested by maintainers. Existing vSphere 8.x code paths should work but no guarantees until a lab run is completed. Users on vSphere 9 are encouraged to file issues with `check_vks_compatibility` output.
+- **docs:** Added pointer to [VCF Python SDK](https://developer.broadcom.com/sdks) (the unified SDK in VCF 9+).
+- **align:** Family v1.5.23 — all 9 skills tracking VCF 9.0 / 9.1 compatibility declaration.
+
 ## v1.5.22 (2026-05-08)
 
 **Family alignment** — no source changes in this skill.
