@@ -1,3 +1,45 @@
+## v1.5.26 (2026-05-20)
+
+**Family-wide MCP server fix — Python 3.10 compatibility (踩坑 #33)** — `vmware-vks mcp`
+crashed at decorator time on Python 3.10 with `subclass() arg 1 must be a class`.
+Root cause: `mcp_server/server.py` used PEP 604 `X | None` in tool signatures
+plus `from __future__ import annotations`; on Python 3.10 + older mcp/pydantic
+combos, `typing.get_type_hints()` evaluates `"str | None"` to a
+`types.UnionType` instance, which FastMCP/Pydantic then feeds to `issubclass()`.
+Reported by a goose user (qwen3.6:27, Python 3.10).
+
+- `mcp_server/server.py`: all `X | None` → `Optional[X]`; ops layer untouched.
+- `<pkg>/cli.py` `mcp_cmd()`: hard guard — exits with installation fix command
+  if Python < 3.11 (defense in depth, our actual lower bound).
+- `pyproject.toml`: `mcp[cli]>=1.10,<2.0` (was `>=1.0`) so uv doesn't pick
+  an ancient version that has the same issubclass bug.
+
+**Tooling — family smoke gains MCP schema-build check** — `scripts/family_smoke.sh`
+new Check 4b runs `asyncio.run(mcp.list_tools())` per skill, forcing FastMCP to
+build Pydantic models for every declared tool. Supports both module-level `mcp`
+and `build_server()` factory patterns.
+
+**Docs — CLAUDE.md gains 踩坑 #33 (PEP 604 / Python 3.10) and #34 (CLI/MCP exposure parity).**
+
+---
+
+## v1.5.24 (2026-05-19)
+
+**Fix — pyVmomi 8.x compatibility (踩坑 #32)** — `connection.py` previously set
+`si._vmware_<skill>_verify_ssl = ...` on the pyVmomi `ServiceInstance`. pyVmomi 8.x
+rejects attribute writes on `ManagedObject` with `Managed object attributes are
+read-only`, which surfaced as `vmware-<skill> doctor` → `vSphere authentication: Auth
+failed: Managed object attributes are read-only` on vCenter 8.0U3 even though raw
+`SmartConnect()` worked fine.
+
+- `connection.py`: introduce module-level `_SI_VERIFY_SSL: dict[int, bool]` keyed by
+  `id(si)` plus `get_verify_ssl(si)` helper. Cleanup is wired into the same `atexit`
+  hook that runs `Disconnect`.
+- Downstream consumers (`ops/guest_ops.py`, `ops/vm_deploy.py`, `ops/supervisor.py`)
+  switched from `getattr(si, "_vmware_*_verify_ssl", True)` to `get_verify_ssl(si)`.
+- `scripts/family_smoke.sh`: new cross-skill check forbids `setattr` on pyVmomi
+  ManagedObjects across the entire family (catches the same regression in future).
+
 ## v1.5.23 (2026-05-19)
 
 **VCF 9.0 / 9.1 — partial / unverified compatibility note.**

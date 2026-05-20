@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 from vmware_policy import sanitize
 
+from vmware_vks.connection import get_verify_ssl
+
 _log = logging.getLogger("vmware-vks.ops.supervisor")
 
 _MIN_VERSION = (8, 0, 0)
@@ -34,14 +36,12 @@ def _vcenter_host(si: ServiceInstance) -> str:
 def _build_ssl_context(si: ServiceInstance) -> ssl.SSLContext:
     """Build an SSL context that mirrors the pyVmomi connection's trust config.
 
-    The connection manager tags the ``ServiceInstance`` with
-    ``_vmware_vks_verify_ssl`` at connect time. When True we use the default
-    verifying context; when False (self-signed / lab certificates) we disable
-    hostname and cert verification. This replaces the previous hardcoded
-    ``CERT_NONE`` which silently ignored ``target.verify_ssl: true`` in
-    user config.
+    The verify_ssl flag is stashed by the connection manager in a module-level
+    dict keyed by id(si) (see connection.get_verify_ssl). When True we use the
+    default verifying context; when False (self-signed / lab certificates) we
+    disable hostname and cert verification.
     """
-    verify_ssl = getattr(si, "_vmware_vks_verify_ssl", True)
+    verify_ssl = get_verify_ssl(si)
     ctx = ssl.create_default_context()
     if not verify_ssl:
         ctx.check_hostname = False

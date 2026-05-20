@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 from vmware_policy import vmware_tool
@@ -36,7 +37,7 @@ logger = logging.getLogger("vmware-vks.mcp")
 mcp = FastMCP("VMware VKS")
 _audit = AuditLogger()
 
-_conn_mgr: ConnectionManager | None = None
+_conn_mgr: Optional[ConnectionManager] = None
 
 
 def _get_conn_mgr() -> ConnectionManager:
@@ -48,7 +49,7 @@ def _get_conn_mgr() -> ConnectionManager:
     return _conn_mgr
 
 
-def _get_si(target: str | None = None):
+def _get_si(target: Optional[str] = None):
     return _get_conn_mgr().connect(target)
 
 
@@ -58,7 +59,7 @@ def _get_si(target: str | None = None):
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def check_vks_compatibility(target: str | None = None) -> dict:
+def check_vks_compatibility(target: Optional[str] = None) -> dict:
     """[READ] Check if this vCenter supports VKS (requires vSphere 8.x+).
 
     Returns: compatible (bool), vcenter_version, wcp_enabled_clusters, hint.
@@ -74,7 +75,7 @@ def check_vks_compatibility(target: str | None = None) -> dict:
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def get_supervisor_status(cluster_id: str, target: str | None = None) -> dict:
+def get_supervisor_status(cluster_id: str, target: Optional[str] = None) -> dict:
     """[READ] Get Supervisor Cluster status.
 
     Args:
@@ -93,7 +94,7 @@ def get_supervisor_status(cluster_id: str, target: str | None = None) -> dict:
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def list_supervisor_storage_policies(target: str | None = None) -> list[dict]:
+def list_supervisor_storage_policies(target: Optional[str] = None) -> list[dict]:
     """[READ] List storage policies available for Supervisor Namespaces.
 
     Returns list of storage policies with compatible cluster IDs.
@@ -113,7 +114,7 @@ def list_supervisor_storage_policies(target: str | None = None) -> list[dict]:
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def list_namespaces(target: str | None = None) -> list[dict]:
+def list_namespaces(target: Optional[str] = None) -> list[dict]:
     """[READ] List all vSphere Namespaces with status."""
     try:
         si = _get_si(target)
@@ -125,7 +126,7 @@ def list_namespaces(target: str | None = None) -> list[dict]:
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def get_namespace(name: str, target: str | None = None) -> dict:
+def get_namespace(name: str, target: Optional[str] = None) -> dict:
     """[READ] Get detailed information for a single vSphere Namespace.
 
     Args:
@@ -146,11 +147,11 @@ def create_namespace(
     name: str,
     cluster_id: str,
     storage_policy: str,
-    cpu_limit: int | None = None,
-    memory_limit_mib: int | None = None,
+    cpu_limit: Optional[int] = None,
+    memory_limit_mib: Optional[int] = None,
     description: str = "",
     dry_run: bool = True,
-    target: str | None = None,
+    target: Optional[str] = None,
 ) -> dict:
     """[WRITE] Create a vSphere Namespace on a Supervisor Cluster.
 
@@ -195,10 +196,10 @@ def create_namespace(
 @vmware_tool(risk_level="medium")
 def update_namespace(
     name: str,
-    cpu_limit: int | None = None,
-    memory_limit_mib: int | None = None,
-    storage_policy: str | None = None,
-    target: str | None = None,
+    cpu_limit: Optional[int] = None,
+    memory_limit_mib: Optional[int] = None,
+    storage_policy: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> dict:
     """[WRITE] Update vSphere Namespace resource quotas or storage policy.
 
@@ -230,7 +231,7 @@ def delete_namespace(
     name: str,
     confirmed: bool = False,
     dry_run: bool = True,
-    target: str | None = None,
+    target: Optional[str] = None,
 ) -> dict:
     """[WRITE] Delete a vSphere Namespace.
 
@@ -260,7 +261,7 @@ def delete_namespace(
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def list_vm_classes(target: str | None = None) -> list[dict]:
+def list_vm_classes(target: Optional[str] = None) -> list[dict]:
     """[READ] List available VM classes for TKC node sizing.
 
     Returns list with id, cpu_count, memory_mib per VM class.
@@ -280,7 +281,7 @@ def list_vm_classes(target: str | None = None) -> list[dict]:
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def list_tkc_clusters(namespace: str | None = None, target: str | None = None) -> dict:
+def list_tkc_clusters(namespace: Optional[str] = None, target: Optional[str] = None) -> dict:
     """[READ] List TanzuKubernetesCluster (TKC) clusters.
 
     Args:
@@ -299,7 +300,7 @@ def list_tkc_clusters(namespace: str | None = None, target: str | None = None) -
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def get_tkc_cluster(name: str, namespace: str, target: str | None = None) -> dict:
+def get_tkc_cluster(name: str, namespace: str, target: Optional[str] = None) -> dict:
     """[READ] Get detailed info for a single TKC cluster.
 
     Args:
@@ -317,7 +318,7 @@ def get_tkc_cluster(name: str, namespace: str, target: str | None = None) -> dic
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def get_tkc_available_versions(namespace: str, target: str | None = None) -> dict:
+def get_tkc_available_versions(namespace: str, target: Optional[str] = None) -> dict:
     """[READ] List K8s versions available for new TKC clusters.
 
     Args:
@@ -343,7 +344,7 @@ def create_tkc_cluster(
     worker_count: int = 3,
     storage_class: str = "vsphere-storage",
     dry_run: bool = True,
-    target: str | None = None,
+    target: Optional[str] = None,
 ) -> dict:
     """[WRITE] Create a TanzuKubernetesCluster.
 
@@ -394,7 +395,7 @@ def create_tkc_cluster(
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
 @vmware_tool(risk_level="medium")
 def scale_tkc_cluster(
-    name: str, namespace: str, worker_count: int, target: str | None = None
+    name: str, namespace: str, worker_count: int, target: Optional[str] = None
 ) -> dict:
     """[WRITE] Scale TKC cluster worker node count.
 
@@ -422,7 +423,7 @@ def scale_tkc_cluster(
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
 @vmware_tool(risk_level="medium")
 def upgrade_tkc_cluster(
-    name: str, namespace: str, k8s_version: str, target: str | None = None
+    name: str, namespace: str, k8s_version: str, target: Optional[str] = None
 ) -> dict:
     """[WRITE] Upgrade TKC cluster to a new K8s version.
 
@@ -455,7 +456,7 @@ def delete_tkc_cluster(
     confirmed: bool = False,
     dry_run: bool = True,
     force: bool = False,
-    target: str | None = None,
+    target: Optional[str] = None,
 ) -> dict:
     """[WRITE] Delete a TKC cluster.
 
@@ -495,7 +496,7 @@ def delete_tkc_cluster(
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def get_supervisor_kubeconfig(namespace: str, target: str | None = None) -> dict:
+def get_supervisor_kubeconfig(namespace: str, target: Optional[str] = None) -> dict:
     """[READ] Get kubeconfig for the Supervisor K8s API endpoint.
 
     Security: The returned kubeconfig contains a short-lived session token.
@@ -521,8 +522,8 @@ def get_supervisor_kubeconfig(namespace: str, target: str | None = None) -> dict
 def get_tkc_kubeconfig(
     name: str,
     namespace: str,
-    output_path: str | None = None,
-    target: str | None = None,
+    output_path: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> dict:
     """[READ] Get kubeconfig for a TKC cluster.
 
@@ -548,7 +549,7 @@ def get_tkc_kubeconfig(
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def get_harbor_info(target: str | None = None) -> dict:
+def get_harbor_info(target: Optional[str] = None) -> dict:
     """[READ] Get embedded Harbor registry info (URL, storage usage, status).
 
     Returns registry URL, storage used, and health status.
@@ -564,7 +565,7 @@ def get_harbor_info(target: str | None = None) -> dict:
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def list_namespace_storage_usage(namespace: str, target: str | None = None) -> dict:
+def list_namespace_storage_usage(namespace: str, target: Optional[str] = None) -> dict:
     """[READ] List PVCs and storage usage for a vSphere Namespace.
 
     Args:
