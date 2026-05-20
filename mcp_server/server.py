@@ -18,7 +18,6 @@ Security
 
 Source: https://github.com/zw008/VMware-VKS
 """
-from __future__ import annotations
 
 import logging
 import os
