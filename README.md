@@ -26,6 +26,7 @@ MCP Skill + CLI for VMware vSphere Kubernetes Service (VKS) management — Super
 
 ## Prerequisites
 
+- **Python 3.10+** — required for `uv tool install`
 - **vSphere 8.0+** — Workload Management (Supervisor) APIs require vSphere 8.x
 - **Workload Management enabled** — WCP must be enabled on at least one compute cluster
 - **License** — vSphere Kubernetes Service (Enterprise Plus or VMware Cloud Foundation)
