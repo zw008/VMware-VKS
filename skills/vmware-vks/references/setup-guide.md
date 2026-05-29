@@ -38,6 +38,14 @@ uv venv && source .venv/bin/activate
 uv pip install -e .
 ```
 
+## Version Compatibility
+
+| vSphere / VCF | Support | Notes |
+|---------|---------|-------|
+| 8.0 / 8.0U1-U3 | Full | Workload Management APIs available; TKC uses `cluster.x-k8s.io/v1beta1`. |
+| 9.0 / 9.1 (VCF 9) | ⚠ Not yet verified | Workload Management (Supervisor / WCP) API surface in vSphere 9 has not been tested by maintainers. Existing vSphere 8.x code paths should work — basic CRUD likely works, corner cases may need testing. TKC API version is auto-detected (`v1` preferred when served, otherwise `v1beta1`). File issues with `check_vks_compatibility` output if you run this on VCF 9. |
+| 7.x | Not supported | WCP API surface is different; use vSphere 8.x+. |
+
 ## Configuration
 
 ```bash
@@ -110,7 +118,7 @@ This skill follows a defense-in-depth approach with six security properties:
 
 1. **Source Code** -- MIT-licensed, fully auditable. No obfuscated logic. Source at [github.com/zw008/VMware-VKS](https://github.com/zw008/VMware-VKS). The `uv` installer fetches the `vmware-vks` package from PyPI, which is built from this GitHub repository.
 
-2. **Credentials** -- `config.yaml` contains vCenter hostnames and usernames only. Passwords are loaded exclusively from `~/.vmware-vks/.env` (read via `python-dotenv`). Passwords are never logged, never echoed to CLI output, and never included in audit log entries.
+2. **Credentials** -- `config.yaml` contains vCenter hostnames and usernames only. Passwords are loaded exclusively from `~/.vmware-vks/.env` (read via `python-dotenv`). Passwords are never logged, never echoed to CLI output, and never included in audit log entries. **In-memory kubeconfig (v1.5.18+)**: Supervisor and TKC kubeconfigs — which embed the vCenter session bearer token — are built as a Python dict and handed to the kubernetes client via `load_kube_config_from_dict()`. The bearer token never touches disk during normal MCP/CLI flow, eliminating the previous temp-file TOCTOU window. The explicit `vmware-vks kubeconfig get -o <path>` CLI export still writes to the user-chosen path so `kubectl` can use it.
 
 3. **Network Scope** -- No webhook, HTTP listener, or inbound network connection is ever started. MCP transport is stdio only. All outbound connections go to the user-configured vCenter host only.
 

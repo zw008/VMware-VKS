@@ -84,6 +84,7 @@ vmware-vks doctor
 - Storage policy: must already exist on the supervisor. `list_supervisor_storage_policies` first; creating a TKC against a missing policy fails after CP boot, leaving partial state.
 - Control-plane count: `1` for dev, `3` for prod (HA). Cannot upgrade from 1→3 without recreating; choose right the first time.
 - Namespace quota: TKC consumes CP + worker × (cpu, memory) from namespace quota. If quota is too tight, workers fail to schedule with no obvious error.
+- TKC API version: auto-detected at runtime via the K8s discovery API (prefers `cluster.x-k8s.io/v1` when the Supervisor serves it, falls back to `v1beta1` on vSphere 8.0). No manual selection needed; advanced callers can override via the `api_version` parameter on `generate_tkc_yaml()`.
 
 **Steps**:
 1. `vmware-vks supervisor check --target prod` → must pass
@@ -265,6 +266,8 @@ All operations are automatically audited via vmware-policy (`@vmware_tool` decor
 - Risk classification: each tool tagged as low/medium/high/critical
 - View recent operations: `vmware-audit log --last 20`
 - View denied operations: `vmware-audit log --status denied`
+
+**In-memory kubeconfig (v1.5.18+)**: kubeconfig for the Supervisor and TKC clusters — which embeds the vCenter session bearer token — is built as a Python dict and loaded into the kubernetes client via `load_kube_config_from_dict()`. The token never touches disk during normal MCP/CLI flow, eliminating the previous temp-file TOCTOU window. The explicit `kubeconfig get -o <path>` CLI export still writes to the user-chosen path for `kubectl` use.
 
 vmware-policy is automatically installed as a dependency — no manual setup needed.
 

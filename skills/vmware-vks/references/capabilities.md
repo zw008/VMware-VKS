@@ -50,6 +50,17 @@ Each operation is classified by autonomy level per the Enterprise Harness Engine
 | Upgrade | `tkc upgrade <name> -n <ns> --version X.Y` | `upgrade_tkc_cluster` | -- | List available versions first |
 | Delete | `tkc delete <name> -n <ns>` | `delete_tkc_cluster` | Double | Rejects if workloads running |
 
+### TKC API Version Auto-Detection (v1.5.18+)
+
+All TKC operations resolve the `cluster.x-k8s.io` API version at runtime via the Kubernetes discovery API (`/apis`). `_resolve_tkc_version()` walks the Supervisor's served versions for the `cluster.x-k8s.io` group and picks the first match from the preference order:
+
+1. `v1` — used when the Supervisor has promoted Cluster API to v1 (later vSphere / VCF releases).
+2. `v1beta1` — fallback for vSphere 8.0, which is also the default for `generate_tkc_yaml()` when called without an explicit `api_version`.
+
+The result is cached per vCenter host, so the discovery call happens at most once per session. If discovery fails (e.g. network blip), the code logs a warning and falls back to `v1beta1` rather than throwing.
+
+**Override** — `generate_tkc_yaml()` accepts an optional `api_version` parameter; pass `"v1"` (or any future version) explicitly when you want to pin a particular API surface for a generated TKC manifest. Most callers do not need this — auto-detection is the supported path.
+
 ## 4. Access Layer (Read-Only)
 
 | Tool | What it returns |
@@ -72,17 +83,18 @@ Each operation is classified by autonomy level per the Enterprise Harness Engine
 | Audit Trail | All write operations logged to `~/.vmware/audit.db` (SQLite WAL, via vmware-policy) with timestamp, target, operation, parameters, result, user |
 | Read-Only Majority | 12/20 tools are read-only |
 | SSL Support | `verify_ssl: false` supported for self-signed vCenter certs (enterprise standard) |
+| In-Memory Kubeconfig | Supervisor/TKC kubeconfig is constructed as a Python dict and loaded into the kubernetes client via `load_kube_config_from_dict()`. The vCenter session bearer token never persists to disk during MCP/CLI calls — eliminates the temp-file TOCTOU window present pre-v1.5.18. Explicit `kubeconfig get -o <path>` export still writes to the user-chosen file for downstream `kubectl` use. |
 
 ## Version Compatibility
 
 | vSphere Version | TKC API | Support |
 |----------------|---------|---------|
 | 8.0 / 8.0U1-U3 | `cluster.x-k8s.io/v1beta1` (ClusterClass) | Full |
-| 9.x (planned) | `cluster.x-k8s.io/v1beta1` | Ready |
+| 9.0 / 9.1 (VCF 9) | `cluster.x-k8s.io/v1` preferred (auto-detected), `v1beta1` fallback | ⚠ Not yet verified — Workload Management API surface in vSphere 9 has not been tested by maintainers. Existing 8.x code paths should work but corner cases may need testing. File issues with `check_vks_compatibility` output if you run this on VCF 9. |
 | 7.0 U3 | `run.tanzu.vmware.com/v1alpha3` | Not supported |
 | 7.0 U1-U2 | `run.tanzu.vmware.com/v1alpha1` | Not supported |
 
-> This skill targets vSphere 8.x+ exclusively. vSphere 7.x uses a different TKC API version -- use `kubectl` directly for 7.x environments.
+> This skill targets vSphere 8.x+ exclusively. vSphere 7.x uses a different TKC API version -- use `kubectl` directly for 7.x environments. TKC API version is auto-detected at runtime (see "TKC API Version Auto-Detection" above).
 
 ## Prerequisites
 

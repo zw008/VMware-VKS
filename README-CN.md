@@ -136,8 +136,9 @@ vmware-vks CLI  ─── 或 ───  vmware-vks MCP Server（stdio）
   │   Supervisor 状态、存储策略、命名空间 CRUD、VM 类、Harbor
   │
   └─ Layer 2: kubernetes client → Supervisor K8s API 端点
-      TKC CR apply / get / delete（cluster.x-k8s.io/v1beta1）
-      Kubeconfig 基于 Layer 1 会话令牌构建
+      TKC CR apply / get / delete（cluster.x-k8s.io API 版本运行时自动探测：
+        Supervisor 支持 v1 时优先选 v1，否则回退 v1beta1（vSphere 8.0））
+      Kubeconfig 基于 Layer 1 会话令牌在内存中构建（不落盘）
   ↓
 vCenter Server 8.x+（Workload Management 已启用）
   ↓
@@ -229,6 +230,7 @@ vmware-vks-mcp
 | TKC 保护 | `delete_namespace` 在命名空间内存在 TKC 集群时拒绝执行 |
 | 工作负载保护 | `delete_tkc_cluster` 在 Deployment/StatefulSet 运行时拒绝执行 |
 | 凭据安全 | 密码仅从环境变量（`.env` 文件）加载，不写入 `config.yaml` |
+| Kubeconfig 内存构建 | Supervisor/TKC kubeconfig（含 vCenter 会话 bearer token）以内存 dict 形式构建并通过 `load_kube_config_from_dict()` 加载 — 不会写入磁盘临时文件（v1.5.18+） |
 | 审计日志 | 所有写操作记录到 `~/.vmware-vks/audit.log` |
 | stdio 传输 | 无网络监听端口；MCP 通过 stdio 运行 |
 
@@ -260,8 +262,9 @@ vmware-vks-mcp
 
 ## 版本兼容性
 
-| vSphere | 支持状态 | 说明 |
+| vSphere / VCF | 支持状态 | 说明 |
 |---------|---------|------|
+| 9.0 / 9.1 | ⚠ 尚未验证 | vSphere 9 的 Workload Management（Supervisor / WCP）API 维护者尚未实测。现有 vSphere 8.x 代码路径理论上可用，但在完成实验室验证之前无任何保证 — 基本 CRUD 大概率正常工作，边界场景可能需要测试。如在 VCF 9 上运行，欢迎提交 issue 并附带 `check_vks_compatibility` 输出。 |
 | 8.0+ | 完整支持 | Workload Management API 可用 |
 | 7.x | 不支持 | WCP API 接口不同，请使用 vSphere 8.x |
 

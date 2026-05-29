@@ -136,8 +136,9 @@ vmware-vks CLI  ─── or ───  vmware-vks MCP Server (stdio)
   │   Supervisor status, storage policies, Namespace CRUD, VM classes, Harbor
   │
   └─ Layer 2: kubernetes client → Supervisor K8s API endpoint
-      TKC CR apply / get / delete  (cluster.x-k8s.io/v1beta1)
-      Kubeconfig built from Layer 1 session token
+      TKC CR apply / get / delete  (cluster.x-k8s.io API version auto-detected:
+        prefers v1 when Supervisor serves it, falls back to v1beta1 for vSphere 8.0)
+      Kubeconfig built in-memory from Layer 1 session token (no temp file on disk)
   ↓
 vCenter Server 8.x+ (Workload Management enabled)
   ↓
@@ -237,6 +238,7 @@ vmware-vks-mcp
 | TKC guard | `delete_namespace` rejects if TKC clusters exist inside |
 | Workload guard | `delete_tkc_cluster` rejects if Deployments/StatefulSets are running |
 | Credential safety | Passwords only from environment variables (`.env` file), never in `config.yaml` |
+| In-memory kubeconfig | Supervisor/TKC kubeconfig (with vCenter session bearer token) is built as an in-memory dict and loaded via `load_kube_config_from_dict()` — never written to a temp file on disk (v1.5.18+) |
 | Audit logging | All write operations logged to `~/.vmware-vks/audit.log` |
 | stdio transport | No network listener; MCP runs over stdio only |
 
@@ -270,7 +272,7 @@ The namespace delete guard prevents deletion when TKC clusters exist inside. Del
 
 | vSphere / VCF | Support | Notes |
 |---------|---------|-------|
-| 9.0 / 9.1 | ⚠ Not yet verified | Supervisor/WCP API surface in vSphere 9 not tested. File issues with `check_vks_compatibility` output if you run this on VCF 9. |
+| 9.0 / 9.1 | ⚠ Not yet verified | Workload Management (Supervisor / WCP) API surface in vSphere 9 has not been tested by maintainers. Existing vSphere 8.x code paths should work but no guarantees until a lab run is completed — basic CRUD likely works, corner cases may need testing. File issues with `check_vks_compatibility` output if you run this on VCF 9. |
 | 8.0+ | Full | Workload Management APIs available |
 | 7.x | Not supported | WCP API surface is different; use vSphere 8.x |
 
