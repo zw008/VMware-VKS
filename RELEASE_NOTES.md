@@ -1,3 +1,15 @@
+## v1.5.29 (2026-05-29) — VCF 9 Verification Status + TKC API Auto-Detect Docs
+
+### Documentation
+- README.md / README-CN.md: VCF 9.0/9.1 row in Version Compatibility table strengthened with v1.5.23 RELEASE_NOTES exact framing ("Workload Management API surface not yet verified by maintainers"). Architecture diagram updated to show API auto-detection + in-memory kubeconfig.
+- SKILL.md: TKC API version auto-detection note in "Deploy a New TKC Cluster" pre-flight section (preference order: `cluster.x-k8s.io/v1` → `v1beta1` with optional override); in-memory kubeconfig paragraph in Audit & Safety.
+- capabilities.md: new "TKC API Version Auto-Detection (v1.5.18+)" subsection explaining `_resolve_tkc_version()`, per-host caching, fallback behavior; "In-Memory Kubeconfig" row in Safety Features table.
+- setup-guide.md: VCF 9 verification caveat; in-memory kubeconfig in Security elements.
+- README files: Python 3.10+ prerequisite (v1.5.27).
+
+### No code changes
+Documentation-only release. No version bump for the underlying TKC auto-detect or kubeconfig features (those shipped in v1.5.18).
+
 ## v1.5.28 (2026-05-20)
 
 **Fix `subclass() arg 1 must be a class` in goose/old mcp environments** —
