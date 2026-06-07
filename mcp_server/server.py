@@ -75,13 +75,20 @@ def check_vks_compatibility(target: Optional[str] = None) -> dict:
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def get_supervisor_status(cluster_id: str, target: Optional[str] = None) -> dict:
-    """[READ] Get Supervisor Cluster status.
+    """[READ] Get the status of one Supervisor Cluster (vSphere with Tanzu control plane).
+
+    Returns cluster_id, config_status (RUNNING = healthy, CONFIGURING, ERROR,
+    REMOVING), kubernetes_status (READY / WARNING / ERROR),
+    api_server_cluster_endpoint (Supervisor K8s API address),
+    kubernetes_version, and network_provider. Read-only. Run
+    check_vks_compatibility first to discover cluster IDs; use this to verify
+    a Supervisor is healthy before creating namespaces or TKC clusters on it.
 
     Args:
-        cluster_id: Compute cluster MoRef ID (e.g. 'domain-c1').
-        target: vCenter target name (uses default if not specified).
-
-    Returns: config_status, kubernetes_status, api_server_endpoint, k8s_version.
+        cluster_id: Compute cluster MoRef ID, e.g. 'domain-c1' (from the
+            wcp_clusters field of check_vks_compatibility).
+        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
+            use the default target defined in that file.
     """
     try:
         si = _get_si(target)
@@ -94,10 +101,19 @@ def get_supervisor_status(cluster_id: str, target: Optional[str] = None) -> dict
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def list_supervisor_storage_policies(target: Optional[str] = None) -> list[dict]:
-    """[READ] List storage policies available for Supervisor Namespaces.
+    """[READ] List storage policies usable by Supervisor Namespaces.
 
-    Returns list of storage policies with compatible cluster IDs.
-    Use this to find valid storage_policy values before creating namespaces.
+    Returns a list of {storage_policy (policy identifier), compatible_clusters
+    (Supervisor cluster MoRef IDs the policy can serve)}. Returns all policies
+    in one call — no pagination. Read-only, no side effects. Call this before
+    create_namespace or update_namespace to obtain a valid storage_policy
+    value; a policy must include your cluster in compatible_clusters to be
+    usable there. For PVC-level usage inside a namespace, use
+    list_namespace_storage_usage instead.
+
+    Args:
+        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
+            use the default target defined in that file.
     """
     try:
         si = _get_si(target)
@@ -114,7 +130,19 @@ def list_supervisor_storage_policies(target: Optional[str] = None) -> list[dict]
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def list_namespaces(target: Optional[str] = None) -> list[dict]:
-    """[READ] List all vSphere Namespaces with status."""
+    """[READ] List all vSphere Namespaces on the target vCenter with their configuration status.
+
+    Returns a list of objects: namespace (name), config_status (RUNNING = healthy,
+    CONFIGURING = being set up, REMOVING = being deleted, ERROR = failed), and
+    description. Returns all namespaces in one call — no pagination. Read-only,
+    no side effects. Use this to discover namespace names, then call
+    get_namespace for full details of one, or update_namespace / delete_namespace
+    to change it.
+
+    Args:
+        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
+            use the default target defined in that file.
+    """
     try:
         si = _get_si(target)
         from vmware_vks.ops import namespace as _ns
@@ -200,13 +228,22 @@ def update_namespace(
     storage_policy: Optional[str] = None,
     target: Optional[str] = None,
 ) -> dict:
-    """[WRITE] Update vSphere Namespace resource quotas or storage policy.
+    """[WRITE] Update resource quotas or storage policy of an existing vSphere Namespace.
+
+    Only the fields you provide are patched; omitted fields keep their current
+    values. If no field is provided, returns status "no_changes" without calling
+    the API. On success returns {namespace, status: "updated"}. Applies
+    immediately (no dry_run); not destructive. Audited to ~/.vmware/audit.db.
+    Use create_namespace for new namespaces; use list_supervisor_storage_policies
+    to find valid storage_policy values.
 
     Args:
-        name: Namespace name.
-        cpu_limit: New CPU limit in MHz (optional).
-        memory_limit_mib: New memory limit in MiB (optional).
-        storage_policy: New storage policy name (optional).
+        name: Existing namespace name (discover via list_namespaces).
+        cpu_limit: New CPU limit in MHz. Omit to keep current.
+        memory_limit_mib: New memory limit in MiB. Omit to keep current.
+        storage_policy: New storage policy name. Omit to keep current.
+        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
+            use the default target defined in that file.
     """
     si = _get_si(target)
     from vmware_vks.ops import namespace as _ns
@@ -261,10 +298,18 @@ def delete_namespace(
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def list_vm_classes(target: Optional[str] = None) -> list[dict]:
-    """[READ] List available VM classes for TKC node sizing.
+    """[READ] List VM classes available for sizing TKC cluster nodes.
 
-    Returns list with id, cpu_count, memory_mib per VM class.
-    Use the 'id' field when creating TKC clusters.
+    Returns a list of {id (class name, e.g. 'best-effort-large'), cpu_count
+    (vCPUs), memory_mib (RAM in MiB), gpu_count (0 if none)}. Returns all
+    classes in one call — no pagination. Read-only, no side effects. Call this
+    before create_tkc_cluster and pass the chosen 'id' as its vm_class
+    argument; 'guaranteed-*' classes reserve resources, 'best-effort-*'
+    classes do not.
+
+    Args:
+        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
+            use the default target defined in that file.
     """
     try:
         si = _get_si(target)
@@ -318,11 +363,19 @@ def get_tkc_cluster(name: str, namespace: str, target: Optional[str] = None) -> 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def get_tkc_available_versions(namespace: str, target: Optional[str] = None) -> dict:
-    """[READ] List K8s versions available for new TKC clusters.
+    """[READ] List Kubernetes versions (TanzuKubernetesReleases) available on the Supervisor.
+
+    Returns {versions: [{name (release name), version (e.g.
+    'v1.28.4+vmware.1')}]} sorted newest first. If the TanzuKubernetesRelease
+    API is unavailable on this Supervisor, returns an empty versions list with
+    error and hint fields instead of raising. Read-only, no side effects. Call
+    this before create_tkc_cluster or upgrade_tkc_cluster to pick a valid
+    k8s_version.
 
     Args:
-        namespace: vSphere Namespace (used to connect to Supervisor).
-        target: vCenter target name.
+        namespace: vSphere Namespace used to reach the Supervisor K8s API.
+        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
+            use the default target defined in that file.
     """
     try:
         si = _get_si(target)
@@ -396,12 +449,22 @@ def create_tkc_cluster(
 def scale_tkc_cluster(
     name: str, namespace: str, worker_count: int, target: Optional[str] = None
 ) -> dict:
-    """[WRITE] Scale TKC cluster worker node count.
+    """[WRITE] Scale the worker node count of an existing TanzuKubernetesCluster (TKC).
+
+    Asynchronous: patches the cluster spec and returns immediately with
+    status "scaling" — node provisioning or removal continues in the
+    background; poll get_tkc_cluster to watch progress. Scales workers only
+    (control plane is unchanged); use upgrade_tkc_cluster to change the K8s
+    version instead. Not destructive, but reducing worker_count drains the
+    removed nodes. Audited to ~/.vmware/audit.db.
 
     Args:
-        name: TKC cluster name.
-        namespace: vSphere Namespace.
-        worker_count: New worker node count (>= 1).
+        name: TKC cluster name (discover via list_tkc_clusters).
+        namespace: vSphere Namespace containing the cluster.
+        worker_count: Desired total worker node count, integer >= 1 (values
+            below 1 are rejected with an error).
+        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
+            use the default target defined in that file.
     """
     si = _get_si(target)
     from vmware_vks.ops import tkc as _tkc
@@ -549,10 +612,17 @@ def get_tkc_kubeconfig(
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def get_harbor_info(target: Optional[str] = None) -> dict:
-    """[READ] Get embedded Harbor registry info (URL, storage usage, status).
+    """[READ] Get status of the embedded Harbor container registry on the Supervisor.
 
-    Returns registry URL, storage used, and health status.
-    Returns error hint if Harbor is not enabled on this Supervisor.
+    Returns {registries: [...]} where each entry has id, url (UI access URL),
+    storage_used_mb, and status (registry health, e.g. RUNNING). If Harbor is
+    not enabled on this Supervisor, returns {error, hint} instead of raising.
+    Read-only, no side effects. Use this to check registry health or find the
+    registry URL before pushing images; it does not list repositories or images.
+
+    Args:
+        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
+            use the default target defined in that file.
     """
     try:
         si = _get_si(target)
@@ -565,11 +635,19 @@ def get_harbor_info(target: Optional[str] = None) -> dict:
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def list_namespace_storage_usage(namespace: str, target: Optional[str] = None) -> dict:
-    """[READ] List PVCs and storage usage for a vSphere Namespace.
+    """[READ] List PersistentVolumeClaims and storage usage inside one vSphere Namespace.
+
+    Connects to the Supervisor K8s API and returns {namespace, pvc_count,
+    pvcs: [{name, namespace, status (Bound / Pending / Lost), capacity
+    (e.g. '10Gi'), storage_class}]}. Returns all PVCs — no pagination.
+    Read-only, no side effects. Use list_namespaces to find namespace names;
+    use list_supervisor_storage_policies for policy-level (not PVC-level)
+    information.
 
     Args:
-        namespace: vSphere Namespace name.
-        target: vCenter target name.
+        namespace: vSphere Namespace name to inspect.
+        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
+            use the default target defined in that file.
     """
     try:
         si = _get_si(target)

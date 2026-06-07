@@ -1,3 +1,12 @@
+## v1.5.30 (2026-06-07) — Tool description quality (Glama TDQS)
+
+### Improved
+- Rewrote MCP tool descriptions flagged by Glama's Tool Description Quality Score review:
+  per-parameter semantics (format, defaults, valid values), return-field documentation,
+  sibling-tool routing guidance, and behavioral transparency (side effects, audit logging,
+  async semantics). Corrected descriptions that overstated or misstated actual behavior.
+- No functional changes; descriptions only.
+
 ## v1.5.29 (2026-05-29) — VCF 9 Verification Status + TKC API Auto-Detect Docs
 
 ### Documentation
