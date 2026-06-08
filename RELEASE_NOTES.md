@@ -1,3 +1,23 @@
+## v1.5.32 (2026-06-08) — Invented Supervisor REST endpoint + wire-field fixes
+
+### Fixed
+- `list_supervisor_storage_policies`: calls the real
+  `GET /api/vcenter/storage/policies` (the previously used
+  `namespace-management/storage/storage-policies` path never existed — 404 on
+  every call). Returns policy ID, name, description.
+- VM classes: memory from the `memory_MB` wire field; `gpu_count` derived from
+  `devices` (vGPU + dynamic DirectPath I/O) — the old flat fields don't exist.
+- Harbor: Summary fields parsed correctly (`registry`/`ui_access_url`/
+  `cluster`/`version`) + per-registry enrichment for storage/health.
+- Supervisor status: Kubernetes version from
+  `GET /namespace-management/software/clusters/{cluster}` → `current_version`
+  (not a Clusters.Info field), with graceful degradation.
+
+### Tests & docs
+- +9 shape regression tests; vim-attribute conformance regression added;
+  safety test asserts CLI confirm guards; docs synced (including removal of a
+  false "admin credentials" claim from the Harbor tool description).
+
 ## v1.5.30 (2026-06-07) — Tool description quality (Glama TDQS)
 
 ### Improved
