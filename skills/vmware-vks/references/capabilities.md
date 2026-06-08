@@ -24,8 +24,8 @@ Each operation is classified by autonomy level per the Enterprise Harness Engine
 | Tool | What it returns |
 |------|----------------|
 | `check_vks_compatibility` | vCenter version (pass/fail for 8.x+), WCP enabled status, network backend type |
-| `get_supervisor_status` | Cluster ID, API endpoint URL, K8s server version, enabled/disabled state |
-| `list_supervisor_storage_policies` | Policy names and IDs (required before creating Namespace or TKC) |
+| `get_supervisor_status` | Cluster ID, config status, Kubernetes status, API endpoint URL, network provider, and `kubernetes_version` (read from the `software/clusters` endpoint; null with a `kubernetes_version_hint` if that call fails) |
+| `list_supervisor_storage_policies` | vCenter storage policies: `policy` (ID), `name`, `description`. Pass the `policy` ID (not the display name) when creating a Namespace or TKC |
 
 ## 2. Namespace Layer
 
@@ -36,7 +36,7 @@ Each operation is classified by autonomy level per the Enterprise Harness Engine
 | Create | `namespace create <name> --apply` | `create_namespace` | dry_run | CPU/memory quotas, storage policy |
 | Update quotas | `namespace update <name>` | `update_namespace` | -- | CPU (MHz), memory (MB) |
 | Delete | `namespace delete <name>` | `delete_namespace` | Double | Rejects if TKC clusters exist |
-| VM classes | `namespace vm-classes` | `list_vm_classes` | -- | Available VM classes for TKC nodes |
+| VM classes | `namespace vm-classes` | `list_vm_classes` | -- | `id`, `cpu_count`, `memory_mb`, `gpu_count` (derived from vGPU + dynamic DirectPath I/O device lists) |
 
 ## 3. TKC Layer
 
@@ -67,7 +67,7 @@ The result is cached per vCenter host, so the discovery call happens at most onc
 |------|----------------|
 | `get_supervisor_kubeconfig` | Kubeconfig for Supervisor-level K8s API |
 | `get_tkc_kubeconfig` | Kubeconfig for a specific TKC cluster (stdout or write to file) |
-| `get_harbor_info` | Harbor URL, admin credentials, storage usage |
+| `get_harbor_info` | Per registry: `id`, `cluster`, `version`, `url`, `status` (health), `storage_used_mb` — status/storage come from a per-registry detail call and are null if it fails. Never returns credentials |
 | `list_namespace_storage_usage` | PVC list and usage stats per Namespace |
 
 ## Safety Features

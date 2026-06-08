@@ -128,25 +128,57 @@ def check_vks_compatibility(si: ServiceInstance) -> dict:
 
 
 def get_supervisor_status(si: ServiceInstance, cluster_id: str) -> dict:
-    """Get Supervisor Cluster status for a given compute cluster MoRef ID."""
+    """Get Supervisor Cluster status for a given compute cluster MoRef ID.
+
+    Clusters.Info has no Kubernetes version field — the version comes from
+    ``GET /api/vcenter/namespace-management/software/clusters/{cluster}``
+    (field ``current_version``). That second call degrades gracefully:
+    on failure, kubernetes_version is None and a kubernetes_version_hint
+    explains why.
+    """
     data = _rest_get(si, f"/vcenter/namespace-management/clusters/{cluster_id}")
-    return {
+    try:
+        software = _rest_get(
+            si, f"/vcenter/namespace-management/software/clusters/{cluster_id}"
+        )
+        k8s_version = (
+            software.get("current_version") if isinstance(software, dict) else None
+        )
+        version_hint = None
+    except Exception as e:  # graceful degradation — status fields still useful
+        k8s_version = None
+        version_hint = (
+            f"Could not read Kubernetes version from the software endpoint: {e}. "
+            "Verify Workload Management is fully configured on this cluster."
+        )
+
+    result = {
         "cluster_id": cluster_id,
         "config_status": data.get("config_status"),
         "kubernetes_status": data.get("kubernetes_status"),
         "api_server_cluster_endpoint": sanitize(data.get("api_server_cluster_endpoint", "")),
-        "kubernetes_version": data.get("current_kubernetes_version"),
+        "kubernetes_version": k8s_version,
         "network_provider": data.get("network_provider"),
     }
+    if version_hint:
+        return {**result, "kubernetes_version_hint": version_hint}
+    return result
 
 
 def list_supervisor_storage_policies(si: ServiceInstance) -> list[dict]:
-    """List storage policies compatible with Supervisor Namespaces."""
-    data = _rest_get(si, "/vcenter/namespace-management/storage/storage-policies")
+    """List vCenter storage policies (the policies users assign to Namespaces).
+
+    Calls ``GET /api/vcenter/storage/policies`` — the
+    ``namespace-management/storage/storage-policies`` path does not exist
+    in the vSphere Automation API (it 404s on every call). Each item is
+    {policy (policy ID), name (display name), description}.
+    """
+    data = _rest_get(si, "/vcenter/storage/policies")
     return [
         {
-            "storage_policy": item.get("storage_policy"),
-            "compatible_clusters": item.get("compatible_clusters", []),
+            "policy": item.get("policy"),
+            "name": sanitize(item.get("name", "") or ""),
+            "description": sanitize(item.get("description", "") or "", max_len=1000),
         }
         for item in (data if isinstance(data, list) else [])
     ]

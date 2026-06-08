@@ -64,7 +64,7 @@ vmware-vks tkc create my-cluster -n dev --apply
 
 1. 检查兼容性 → `vmware-vks check`
 2. 查看可用 K8s 版本 → `vmware-vks tkc versions -n dev`
-3. 创建命名空间（如需）→ `vmware-vks namespace create dev --cluster domain-c1 --storage-policy vSAN --cpu 16000 --memory 32768 --apply`
+3. 创建命名空间（如需）→ `vmware-vks namespace create dev --cluster domain-c1 --storage-policy <策略ID> --cpu 16000 --memory 32768 --apply`（策略 ID 通过 `vmware-vks supervisor storage-policies` 获取）
 4. 创建 TKC 集群 → `vmware-vks tkc create dev-cluster -n dev --version v1.28.4+vmware.1 --control-plane 1 --workers 3 --vm-class best-effort-large --apply`
 5. 获取 kubeconfig → `vmware-vks kubeconfig get dev-cluster -n dev`
 
@@ -89,7 +89,7 @@ vmware-vks tkc create my-cluster -n dev --apply
 |------|------|------|
 | `check_vks_compatibility` | vCenter 版本检查 + WCP 状态 | 只读 |
 | `get_supervisor_status` | Supervisor 集群状态和 K8s API 端点 | 只读 |
-| `list_supervisor_storage_policies` | 命名空间可用存储策略列表 | 只读 |
+| `list_supervisor_storage_policies` | vCenter 存储策略列表（策略 ID、名称、描述） | 只读 |
 
 ### 命名空间
 
@@ -120,7 +120,7 @@ vmware-vks tkc create my-cluster -n dev --apply
 |------|------|------|
 | `get_supervisor_kubeconfig` | Supervisor kubeconfig YAML | 只读 |
 | `get_tkc_kubeconfig` | TKC kubeconfig（标准输出或文件） | 只读 |
-| `get_harbor_info` | 内置 Harbor 仓库信息 | 只读 |
+| `get_harbor_info` | 内置 Harbor 仓库信息（ID、集群、版本、URL、健康状态、已用存储） | 只读 |
 | `list_namespace_storage_usage` | PVC 列表和容量统计 | 只读 |
 
 ## 架构
@@ -243,7 +243,7 @@ vmware-vks-mcp
 
 ### 创建命名空间失败，提示 "storage policy not found"
 
-先列出可用策略：`vmware-vks supervisor storage-policies`。策略名称区分大小写。
+先列出策略：`vmware-vks supervisor storage-policies`，然后将 **Policy ID** 列的值（而非显示名称）作为 `--storage-policy` 传入。
 
 ### TKC 集群卡在 "Creating" 阶段
 

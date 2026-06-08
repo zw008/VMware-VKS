@@ -64,7 +64,7 @@ vmware-vks tkc create my-cluster -n dev --apply
 
 1. Check compatibility → `vmware-vks check`
 2. List available K8s versions → `vmware-vks tkc versions -n dev`
-3. Create namespace (if needed) → `vmware-vks namespace create dev --cluster domain-c1 --storage-policy vSAN --cpu 16000 --memory 32768 --apply`
+3. Create namespace (if needed) → `vmware-vks namespace create dev --cluster domain-c1 --storage-policy <policy-id> --cpu 16000 --memory 32768 --apply` (get the policy ID from `vmware-vks supervisor storage-policies`)
 4. Create TKC cluster → `vmware-vks tkc create dev-cluster -n dev --version v1.28.4+vmware.1 --control-plane 1 --workers 3 --vm-class best-effort-large --apply`
 5. Get kubeconfig → `vmware-vks kubeconfig get dev-cluster -n dev`
 
@@ -89,7 +89,7 @@ vmware-vks tkc create my-cluster -n dev --apply
 |------|-------------|------|
 | `check_vks_compatibility` | vCenter version check + WCP status | Read |
 | `get_supervisor_status` | Supervisor cluster status and K8s API endpoint | Read |
-| `list_supervisor_storage_policies` | Available storage policies for Namespaces | Read |
+| `list_supervisor_storage_policies` | vCenter storage policies (policy ID, name, description) | Read |
 
 ### Namespace
 
@@ -120,7 +120,7 @@ vmware-vks tkc create my-cluster -n dev --apply
 |------|-------------|------|
 | `get_supervisor_kubeconfig` | Supervisor kubeconfig YAML | Read |
 | `get_tkc_kubeconfig` | TKC kubeconfig (stdout or file) | Read |
-| `get_harbor_info` | Embedded Harbor registry info | Read |
+| `get_harbor_info` | Embedded Harbor registry info (id, cluster, version, URL, health, storage used) | Read |
 | `list_namespace_storage_usage` | PVC list and capacity stats | Read |
 
 ## Architecture
@@ -251,7 +251,7 @@ Workload Management must be enabled in vCenter. Check: vCenter UI -> Workload Ma
 
 ### Namespace creation fails with "storage policy not found"
 
-List available policies first: `vmware-vks supervisor storage-policies`. Policy names are case-sensitive.
+List policies first: `vmware-vks supervisor storage-policies`, then pass the **Policy ID** column value (not the display name) as `--storage-policy`.
 
 ### TKC cluster stuck in "Creating" phase
 

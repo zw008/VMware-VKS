@@ -94,13 +94,13 @@ def supervisor_status(
 def supervisor_storage_policies(
     target: Optional[str] = typer.Option(None, "-t", "--target"),
 ):
-    """List storage policies available for Namespaces."""
+    """List vCenter storage policies available for Namespaces."""
     from vmware_vks.ops.supervisor import list_supervisor_storage_policies
     si = _get_si(target)
     policies = list_supervisor_storage_policies(si)
-    table = Table("Storage Policy", "Compatible Clusters")
+    table = Table("Policy ID", "Name", "Description")
     for p in policies:
-        table.add_row(p["storage_policy"], str(p["compatible_clusters"]))
+        table.add_row(str(p["policy"]), p["name"], p["description"])
     console.print(table)
 
 
@@ -203,9 +203,9 @@ def namespace_vm_classes(
     from vmware_vks.ops.namespace import list_vm_classes
     si = _get_si(target)
     classes = list_vm_classes(si)
-    table = Table("ID", "CPU", "Memory (MiB)", "GPU")
+    table = Table("ID", "CPU", "Memory (MB)", "GPU")
     for c in classes:
-        table.add_row(str(c["id"]), str(c["cpu_count"]), str(c["memory_mib"]), str(c["gpu_count"]))
+        table.add_row(str(c["id"]), str(c["cpu_count"]), str(c["memory_mb"]), str(c["gpu_count"]))
     console.print(table)
 
 

@@ -81,7 +81,7 @@ vmware-vks doctor
 - Supervisor must be vSphere 8.x+ with WCP enabled — `supervisor check` returns pass/fail. If fail, no amount of TKC commands will work; resolve at vSphere/WCP layer first.
 - K8s version: pick a TKR version that's still supported by VMware (not EOL). New clusters on EOL versions look fine until you need a CVE patch and there isn't one.
 - VM class sizing: `best-effort-*` for dev, `guaranteed-*` for prod. A `best-effort` worker can be evicted under host pressure — production workloads need guaranteed.
-- Storage policy: must already exist on the supervisor. `list_supervisor_storage_policies` first; creating a TKC against a missing policy fails after CP boot, leaving partial state.
+- Storage policy: must already exist in vCenter. `list_supervisor_storage_policies` first and pass the returned `policy` ID (not the display name); creating a TKC against a missing policy fails after CP boot, leaving partial state.
 - Control-plane count: `1` for dev, `3` for prod (HA). Cannot upgrade from 1→3 without recreating; choose right the first time.
 - Namespace quota: TKC consumes CP + worker × (cpu, memory) from namespace quota. If quota is too tight, workers fail to schedule with no obvious error.
 - TKC API version: auto-detected at runtime via the K8s discovery API (prefers `cluster.x-k8s.io/v1` when the Supervisor serves it, falls back to `v1beta1` on vSphere 8.0). No manual selection needed; advanced callers can override via the `api_version` parameter on `generate_tkc_yaml()`.
@@ -221,7 +221,7 @@ Workload Management must be enabled in vCenter. Check: vCenter UI → Workload M
 
 ### Namespace creation fails with "storage policy not found"
 
-List available policies first: `vmware-vks supervisor storage-policies`. Policy names are case-sensitive.
+List policies first: `vmware-vks supervisor storage-policies`, then pass the **Policy ID** column value (not the display name) as `--storage-policy`.
 
 ### TKC cluster stuck in "Creating" phase
 

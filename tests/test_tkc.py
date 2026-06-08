@@ -42,7 +42,12 @@ def test_list_tkc_clusters_empty():
     si = MagicMock()
     mock_api = MagicMock()
     mock_api.list_namespaced_custom_object.return_value = {"items": []}
-    with patch("vmware_vks.ops.tkc._get_custom_objects_api", return_value=mock_api):
+    with (
+        patch("vmware_vks.ops.tkc._get_custom_objects_api", return_value=mock_api),
+        # _resolve_tkc_version was added after this test; it hits Supervisor
+        # discovery (_rest_get) and must be stubbed for the unit test.
+        patch("vmware_vks.ops.tkc._resolve_tkc_version", return_value="v1alpha3"),
+    ):
         result = list_tkc_clusters(si, namespace="dev")
     assert result["clusters"] == []
     assert result["total"] == 0

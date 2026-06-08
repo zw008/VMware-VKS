@@ -138,14 +138,26 @@ def delete_namespace(
 
 
 def list_vm_classes(si: ServiceInstance) -> list[dict]:
-    """List available VM classes for TKC node sizing."""
+    """List available VM classes for TKC node sizing.
+
+    VirtualMachineClasses.Info wire fields: memory is ``memory_MB`` and GPU
+    info nests under ``devices`` (``vgpu_devices`` +
+    ``dynamic_direct_path_io_devices``) — there is no flat gpu_count field,
+    so we derive it from the device lists.
+    """
     data = _rest_get(si, "/vcenter/namespace-management/virtual-machine-classes")
-    return [
-        {
-            "id": item.get("id"),
-            "cpu_count": item.get("cpu_count"),
-            "memory_mib": item.get("memory_mib"),
-            "gpu_count": item.get("gpu_count", 0),
-        }
-        for item in (data if isinstance(data, list) else [])
-    ]
+    classes = []
+    for item in (data if isinstance(data, list) else []):
+        devices = item.get("devices") or {}
+        gpu_count = len(devices.get("vgpu_devices") or []) + len(
+            devices.get("dynamic_direct_path_io_devices") or []
+        )
+        classes.append(
+            {
+                "id": item.get("id"),
+                "cpu_count": item.get("cpu_count"),
+                "memory_mb": item.get("memory_MB"),
+                "gpu_count": gpu_count,
+            }
+        )
+    return classes

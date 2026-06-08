@@ -52,8 +52,9 @@ def test_list_supervisor_storage_policies_returns_list():
     si = _mock_si()
     with patch("vmware_vks.ops.supervisor._rest_get") as mock_get:
         mock_get.return_value = [
-            {"storage_policy": "vsphere-storage", "compatible_clusters": ["domain-c1"]}
+            {"policy": "policy-uuid-1", "name": "vsphere-storage", "description": "Default"}
         ]
         result = list_supervisor_storage_policies(si)
     assert isinstance(result, list)
-    assert result[0]["storage_policy"] == "vsphere-storage"
+    assert result[0]["policy"] == "policy-uuid-1"
+    assert result[0]["name"] == "vsphere-storage"

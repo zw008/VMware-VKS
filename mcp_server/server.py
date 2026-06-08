@@ -80,7 +80,9 @@ def get_supervisor_status(cluster_id: str, target: Optional[str] = None) -> dict
     Returns cluster_id, config_status (RUNNING = healthy, CONFIGURING, ERROR,
     REMOVING), kubernetes_status (READY / WARNING / ERROR),
     api_server_cluster_endpoint (Supervisor K8s API address),
-    kubernetes_version, and network_provider. Read-only. Run
+    kubernetes_version (from the software/clusters endpoint; null plus a
+    kubernetes_version_hint if that call fails), and network_provider.
+    Read-only. Run
     check_vks_compatibility first to discover cluster IDs; use this to verify
     a Supervisor is healthy before creating namespaces or TKC clusters on it.
 
@@ -101,15 +103,13 @@ def get_supervisor_status(cluster_id: str, target: Optional[str] = None) -> dict
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def list_supervisor_storage_policies(target: Optional[str] = None) -> list[dict]:
-    """[READ] List storage policies usable by Supervisor Namespaces.
+    """[READ] List vCenter storage policies (the policies assigned to Supervisor Namespaces).
 
-    Returns a list of {storage_policy (policy identifier), compatible_clusters
-    (Supervisor cluster MoRef IDs the policy can serve)}. Returns all policies
-    in one call — no pagination. Read-only, no side effects. Call this before
-    create_namespace or update_namespace to obtain a valid storage_policy
-    value; a policy must include your cluster in compatible_clusters to be
-    usable there. For PVC-level usage inside a namespace, use
-    list_namespace_storage_usage instead.
+    Returns a list of {policy (policy ID), name (display name), description}.
+    Returns all policies in one call — no pagination. Read-only, no side
+    effects. Call this before create_namespace or update_namespace to obtain
+    a valid storage_policy value (pass the 'policy' ID). For PVC-level usage
+    inside a namespace, use list_namespace_storage_usage instead.
 
     Args:
         target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
@@ -301,7 +301,8 @@ def list_vm_classes(target: Optional[str] = None) -> list[dict]:
     """[READ] List VM classes available for sizing TKC cluster nodes.
 
     Returns a list of {id (class name, e.g. 'best-effort-large'), cpu_count
-    (vCPUs), memory_mib (RAM in MiB), gpu_count (0 if none)}. Returns all
+    (vCPUs), memory_mb (RAM in MB), gpu_count (vGPU + dynamic DirectPath I/O
+    devices; 0 if none)}. Returns all
     classes in one call — no pagination. Read-only, no side effects. Call this
     before create_tkc_cluster and pass the chosen 'id' as its vm_class
     argument; 'guaranteed-*' classes reserve resources, 'best-effort-*'
@@ -614,8 +615,11 @@ def get_tkc_kubeconfig(
 def get_harbor_info(target: Optional[str] = None) -> dict:
     """[READ] Get status of the embedded Harbor container registry on the Supervisor.
 
-    Returns {registries: [...]} where each entry has id, url (UI access URL),
-    storage_used_mb, and status (registry health, e.g. RUNNING). If Harbor is
+    Returns {registries: [...]} where each entry has id (registry ID),
+    cluster (Supervisor cluster MoRef), version, url (UI access URL),
+    status (registry health, e.g. RUNNING), and storage_used_mb. Status and
+    storage come from a per-registry detail call and are null if that call
+    fails. If Harbor is
     not enabled on this Supervisor, returns {error, hint} instead of raising.
     Read-only, no side effects. Use this to check registry health or find the
     registry URL before pushing images; it does not list repositories or images.

@@ -18,7 +18,8 @@ Verifies connectivity, credentials, and WCP status for all configured vCenters (
 # Get Supervisor cluster status (ID, API endpoint, K8s version, state)
 vmware-vks supervisor status <cluster-id> [--target <name>]
 
-# List available storage policies (needed before creating Namespace or TKC)
+# List vCenter storage policies (Policy ID / Name / Description).
+# Pass the Policy ID — not the display name — when creating a Namespace or TKC.
 vmware-vks supervisor storage-policies [--target <name>]
 ```
 
@@ -44,7 +45,7 @@ vmware-vks namespace update <name> \
 # Delete Namespace (rejects if TKC clusters exist inside)
 vmware-vks namespace delete <name> [--target <name>]
 
-# List available VM classes for TKC nodes
+# List available VM classes for TKC nodes (ID / CPU / Memory (MB) / GPU)
 vmware-vks namespace vm-classes [--target <name>]
 ```
 
@@ -94,7 +95,8 @@ vmware-vks kubeconfig get <cluster-name> -n <namespace> \
 ## Harbor & Storage
 
 ```bash
-# Get Harbor registry URL, admin credentials, storage usage
+# Get Harbor registry info (ID, cluster, version, UI URL, health status,
+# storage used in MB; status/storage are null if the detail call fails)
 vmware-vks harbor [--target <name>]
 
 # List PVC usage statistics per Namespace

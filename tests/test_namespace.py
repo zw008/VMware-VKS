@@ -78,7 +78,9 @@ def test_list_vm_classes_returns_list():
     si = _mock_si()
     with patch("vmware_vks.ops.namespace._rest_get") as mock_get:
         mock_get.return_value = [
-            {"id": "best-effort-large", "cpu_count": 4, "memory_mib": 8192}
+            {"id": "best-effort-large", "cpu_count": 4, "memory_MB": 8192}
         ]
         result = list_vm_classes(si)
     assert result[0]["id"] == "best-effort-large"
+    assert result[0]["memory_mb"] == 8192
+    assert result[0]["gpu_count"] == 0
