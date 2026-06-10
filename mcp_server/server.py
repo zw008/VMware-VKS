@@ -14,7 +14,9 @@ Security
 * Credentials loaded from ~/.vmware-vks/.env (chmod 600 recommended)
 * stdio transport only — no network listener
 * delete_namespace rejects if TKC clusters exist inside
-* All write operations logged to ~/.vmware-vks/audit.log
+* All write operations audited twice: the central ~/.vmware/audit.db (SQLite,
+  via the @vmware_tool decorator) plus a local JSON-Lines mirror at
+  ~/.vmware-vks/audit.log
 
 Source: https://github.com/zw008/VMware-VKS
 """
@@ -25,13 +27,27 @@ from pathlib import Path
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
-from vmware_policy import vmware_tool
+from vmware_policy import sanitize, vmware_tool
 
 from vmware_vks.config import load_config
 from vmware_vks.connection import ConnectionManager
 from vmware_vks.notify.audit import AuditLogger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vmware-vks.mcp")
+
+def _safe_error(exc: Exception, tool: str) -> str:
+    """Return an agent-safe error string; log full detail server-side only.
+
+    Raw exception text can carry API response bodies, internal paths, or
+    host:port pairs. Full traceback goes to the server log; the agent sees only
+    a control-char-stripped, length-capped message. Intentional validation
+    errors (ValueError/FileNotFoundError/KeyError/PermissionError) pass through.
+    """
+    logger.error("Tool %s failed", tool, exc_info=True)
+    if isinstance(exc, (ValueError, FileNotFoundError, KeyError, PermissionError)):
+        return sanitize(str(exc), 300)
+    return f"{type(exc).__name__}: operation failed."
+
 
 mcp = FastMCP("VMware VKS")
 _audit = AuditLogger()
@@ -69,7 +85,7 @@ def check_vks_compatibility(target: Optional[str] = None) -> dict:
         from vmware_vks.ops import supervisor as _sup
         return _sup.check_vks_compatibility(si)
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
@@ -97,7 +113,7 @@ def get_supervisor_status(cluster_id: str, target: Optional[str] = None) -> dict
         from vmware_vks.ops import supervisor as _sup
         return _sup.get_supervisor_status(si, cluster_id)
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
@@ -120,7 +136,7 @@ def list_supervisor_storage_policies(target: Optional[str] = None) -> list[dict]
         from vmware_vks.ops import supervisor as _sup
         return _sup.list_supervisor_storage_policies(si)
     except Exception as e:
-        return [{"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}]
+        return [{"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}]
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +164,7 @@ def list_namespaces(target: Optional[str] = None) -> list[dict]:
         from vmware_vks.ops import namespace as _ns
         return _ns.list_namespaces(si)
     except Exception as e:
-        return [{"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}]
+        return [{"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}]
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
@@ -165,7 +181,7 @@ def get_namespace(name: str, target: Optional[str] = None) -> dict:
         from vmware_vks.ops import namespace as _ns
         return _ns.get_namespace(si, name)
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
@@ -207,7 +223,7 @@ def create_namespace(
             _audit.log(
                 target=t, operation="create_namespace",
                 resource=name, parameters=params,
-                result=f"failed: {e}",
+                result=f"failed: {sanitize(str(e), 200)}",
             )
         raise
     if not dry_run:
@@ -233,7 +249,8 @@ def update_namespace(
     Only the fields you provide are patched; omitted fields keep their current
     values. If no field is provided, returns status "no_changes" without calling
     the API. On success returns {namespace, status: "updated"}. Applies
-    immediately (no dry_run); not destructive. Audited to ~/.vmware/audit.db.
+    immediately (no dry_run); not destructive. Audited to ~/.vmware/audit.db
+    (SQLite) and ~/.vmware-vks/audit.log (JSON Lines).
     Use create_namespace for new namespaces; use list_supervisor_storage_policies
     to find valid storage_policy values.
 
@@ -254,7 +271,7 @@ def update_namespace(
                                       storage_policy=storage_policy)
     except Exception as e:
         _audit.log(target=t, operation="update_namespace",
-                   resource=name, parameters={}, result=f"failed: {e}")
+                   resource=name, parameters={}, result=f"failed: {sanitize(str(e), 200)}")
         raise
     _audit.log(target=t, operation="update_namespace",
                resource=name, parameters={}, result="success")
@@ -287,7 +304,7 @@ def delete_namespace(
     except Exception as e:
         if not dry_run and confirmed:
             _audit.log(target=t, operation="delete_namespace",
-                       resource=name, parameters={}, result=f"failed: {e}")
+                       resource=name, parameters={}, result=f"failed: {sanitize(str(e), 200)}")
         raise
     if not dry_run and confirmed:
         _audit.log(target=t, operation="delete_namespace",
@@ -317,7 +334,7 @@ def list_vm_classes(target: Optional[str] = None) -> list[dict]:
         from vmware_vks.ops import namespace as _ns
         return _ns.list_vm_classes(si)
     except Exception as e:
-        return [{"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}]
+        return [{"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}]
 
 
 # ---------------------------------------------------------------------------
@@ -340,7 +357,7 @@ def list_tkc_clusters(namespace: Optional[str] = None, target: Optional[str] = N
         from vmware_vks.ops import tkc as _tkc
         return _tkc.list_tkc_clusters(si, namespace=namespace)
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
@@ -358,7 +375,7 @@ def get_tkc_cluster(name: str, namespace: str, target: Optional[str] = None) -> 
         from vmware_vks.ops import tkc as _tkc
         return _tkc.get_tkc_cluster(si, name, namespace)
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
@@ -383,7 +400,7 @@ def get_tkc_available_versions(namespace: str, target: Optional[str] = None) -> 
         from vmware_vks.ops import tkc as _tkc
         return _tkc.get_tkc_available_versions(si, namespace)
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
@@ -432,7 +449,7 @@ def create_tkc_cluster(
                 target=t, operation="create_tkc_cluster",
                 resource=f"{namespace}/{name}",
                 parameters=params,
-                result=f"failed: {e}",
+                result=f"failed: {sanitize(str(e), 200)}",
             )
         raise
     if not dry_run:
@@ -457,7 +474,8 @@ def scale_tkc_cluster(
     background; poll get_tkc_cluster to watch progress. Scales workers only
     (control plane is unchanged); use upgrade_tkc_cluster to change the K8s
     version instead. Not destructive, but reducing worker_count drains the
-    removed nodes. Audited to ~/.vmware/audit.db.
+    removed nodes. Audited to ~/.vmware/audit.db (SQLite) and
+    ~/.vmware-vks/audit.log (JSON Lines).
 
     Args:
         name: TKC cluster name (discover via list_tkc_clusters).
@@ -475,7 +493,7 @@ def scale_tkc_cluster(
     except Exception as e:
         _audit.log(target=t, operation="scale_tkc_cluster",
                    resource=f"{namespace}/{name}", parameters={"worker_count": worker_count},
-                   result=f"failed: {e}")
+                   result=f"failed: {sanitize(str(e), 200)}")
         raise
     _audit.log(target=t, operation="scale_tkc_cluster",
                resource=f"{namespace}/{name}", parameters={"worker_count": worker_count},
@@ -503,7 +521,7 @@ def upgrade_tkc_cluster(
     except Exception as e:
         _audit.log(target=t, operation="upgrade_tkc_cluster",
                    resource=f"{namespace}/{name}", parameters={"k8s_version": k8s_version},
-                   result=f"failed: {e}")
+                   result=f"failed: {sanitize(str(e), 200)}")
         raise
     _audit.log(target=t, operation="upgrade_tkc_cluster",
                resource=f"{namespace}/{name}", parameters={"k8s_version": k8s_version},
@@ -544,7 +562,7 @@ def delete_tkc_cluster(
         if not dry_run and confirmed:
             _audit.log(target=t, operation="delete_tkc_cluster",
                        resource=f"{namespace}/{name}", parameters={"force": force},
-                       result=f"failed: {e}")
+                       result=f"failed: {sanitize(str(e), 200)}")
         raise
     if not dry_run and confirmed:
         _audit.log(target=t, operation="delete_tkc_cluster",
@@ -577,7 +595,7 @@ def get_supervisor_kubeconfig(namespace: str, target: Optional[str] = None) -> d
         kc_str = _kc.get_supervisor_kubeconfig_str(si, namespace)
         return {"namespace": namespace, "kubeconfig": kc_str}
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
@@ -607,7 +625,7 @@ def get_tkc_kubeconfig(
         path = Path(output_path).expanduser() if output_path else None
         return _kc.write_kubeconfig(si, name, namespace, output_path=path)
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
@@ -633,7 +651,7 @@ def get_harbor_info(target: Optional[str] = None) -> dict:
         from vmware_vks.ops import harbor as _harbor
         return _harbor.get_harbor_info(si)
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
@@ -658,7 +676,7 @@ def list_namespace_storage_usage(namespace: str, target: Optional[str] = None) -
         from vmware_vks.ops import storage as _storage
         return _storage.list_namespace_storage_usage(si, namespace)
     except Exception as e:
-        return {"error": str(e), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 def main() -> None:

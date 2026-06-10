@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -50,12 +51,16 @@ def build_tkc_kubeconfig(
             )
 
         token = si.content.sessionManager.currentSession.key
+        # Honour verify_ssl (see k8s_connection); only lab/self-signed skips TLS.
+        from vmware_vks.connection import get_verify_ssl
+
+        skip_tls = not get_verify_ssl(si)
         return {
             "apiVersion": "v1",
             "kind": "Config",
             "clusters": [{"name": cluster_name, "cluster": {
                 "server": f"https://{host}:{port}",
-                "insecure-skip-tls-verify": True,
+                "insecure-skip-tls-verify": skip_tls,
             }}],
             "users": [{"name": "vsphere-user", "user": {"token": token}}],
             "contexts": [{"name": f"{cluster_name}-context", "context": {
@@ -77,6 +82,42 @@ def get_tkc_kubeconfig_str(si: ServiceInstance, cluster_name: str, namespace: st
     return _yaml.dump(build_tkc_kubeconfig(si, cluster_name, namespace))
 
 
+def _write_kubeconfig_file(output_path: Path, content: str) -> Path:
+    """Write a token-bearing kubeconfig to ``output_path`` securely.
+
+    The file carries a live session token, so:
+      * refuse to follow a symlink at the target (prevents redirecting the
+        token to an attacker-controlled location),
+      * create with O_NOFOLLOW and mode 0600 so it is never briefly readable
+        by other users and the final component cannot be a symlink.
+
+    The user/agent may still choose any directory they have write access to —
+    that is the function's purpose; we only block symlink redirection.
+    """
+    target = Path(output_path).expanduser()
+
+    if target.is_symlink():
+        raise ValueError(
+            f"Refusing to write kubeconfig through a symlink: {output_path}"
+        )
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(str(target), flags, 0o600)
+    except OSError as e:
+        raise ValueError(
+            f"Cannot write kubeconfig to {output_path}: {e}"
+        ) from e
+    with os.fdopen(fd, "w") as fh:
+        fh.write(content)
+    target.chmod(0o600)
+    return target
+
+
 def write_kubeconfig(
     si: ServiceInstance,
     cluster_name: str,
@@ -86,7 +127,6 @@ def write_kubeconfig(
     """Write TKC kubeconfig to file or return as string."""
     kubeconfig_str = get_tkc_kubeconfig_str(si, cluster_name, namespace)
     if output_path:
-        output_path.write_text(kubeconfig_str)
-        output_path.chmod(0o600)
-        return {"cluster": cluster_name, "written_to": str(output_path)}
+        written = _write_kubeconfig_file(output_path, kubeconfig_str)
+        return {"cluster": cluster_name, "written_to": str(written)}
     return {"cluster": cluster_name, "kubeconfig": kubeconfig_str}

@@ -1,3 +1,18 @@
+## v1.5.35 (2026-06-10) — security fix: kubeconfig TLS bypass + token-file hardening
+
+### Fixed
+- **Generated kubeconfigs now honour `verify_ssl`** instead of hardcoding
+  `insecure-skip-tls-verify: true`. Previously the kubernetes client never validated the
+  Supervisor/TKC API certificate — even in production. It now validates against the system
+  CA bundle unless `verify_ssl: false` is explicitly set for a lab.
+- **Kubeconfig file writes** (which carry a live session token) refuse to follow a symlink
+  and are created with `O_NOFOLLOW` + mode 0600.
+- **MCP tools route errors through `_safe_error()`**; audit dir 0700 / log 0600.
+- **Docs corrected** to reflect that auditing writes both `~/.vmware/audit.db` (SQLite, via
+  vmware-policy) and a local JSON-Lines mirror at `~/.vmware-vks/audit.log`.
+
+This release aligns the whole family back to a single version (1.5.35); vmware-policy and vmware-pilot return to the shared number after sitting at 1.5.22.
+
 ## v1.5.32 (2026-06-08) — Invented Supervisor REST endpoint + wire-field fixes
 
 ### Fixed

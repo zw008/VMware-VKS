@@ -46,6 +46,14 @@ def _build_supervisor_kubeconfig(si: ServiceInstance, namespace: str) -> dict[st
 
     token = si.content.sessionManager.currentSession.key
 
+    # Honour the verify_ssl flag stashed by the connection manager. When True,
+    # the kubernetes client validates the Supervisor cert against the system CA
+    # bundle (matching supervisor._build_ssl_context). Only self-signed/lab
+    # setups (verify_ssl=false) skip verification.
+    from vmware_vks.connection import get_verify_ssl
+
+    skip_tls = not get_verify_ssl(si)
+
     return {
         "apiVersion": "v1",
         "kind": "Config",
@@ -53,7 +61,7 @@ def _build_supervisor_kubeconfig(si: ServiceInstance, namespace: str) -> dict[st
             "name": "supervisor",
             "cluster": {
                 "server": f"https://{api_endpoint}",
-                "insecure-skip-tls-verify": True,
+                "insecure-skip-tls-verify": skip_tls,
             }
         }],
         "users": [{"name": "vsphere-user", "user": {"token": token}}],

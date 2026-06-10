@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,7 +15,12 @@ _log = logging.getLogger("vmware-vks.audit")
 class AuditLogger:
     def __init__(self, log_file: Path = _AUDIT_FILE) -> None:
         self._file = log_file
-        self._file.parent.mkdir(parents=True, exist_ok=True)
+        self._file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # mkdir mode is masked by umask; enforce 0700 explicitly. Best-effort.
+        try:
+            os.chmod(self._file.parent, 0o700)
+        except OSError:
+            pass
 
     def log(
         self,
@@ -35,7 +41,14 @@ class AuditLogger:
             "user": user,
         }
         try:
+            existed = self._file.exists()
             with open(self._file, "a") as f:
                 f.write(json.dumps(entry) + "\n")
+            if not existed:
+                # Restrict the log (operation history) to owner-only on creation.
+                try:
+                    os.chmod(self._file, 0o600)
+                except OSError:
+                    pass
         except OSError as e:
             _log.warning("Failed to write audit log: %s", e)
