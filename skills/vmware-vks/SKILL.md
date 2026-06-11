@@ -128,7 +128,7 @@ vmware-vks CLI  ─── or ───  vmware-vks MCP Server (stdio)
   │
   └─ Layer 2: kubernetes client → Supervisor K8s API endpoint
       TKC CR apply / get / delete  (cluster.x-k8s.io/v1beta1)
-      Kubeconfig built from Layer 1 session token
+      Kubeconfig bearer token from POST /wcp/login (Supervisor JWT)
   ↓
 vCenter Server 8.x+ (Workload Management enabled)
   ↓
@@ -143,7 +143,7 @@ Supervisor Cluster → vSphere Namespaces → TanzuKubernetesCluster
 | Cloud models (Claude, GPT-4o) | Either | MCP gives structured JSON I/O |
 | Automated pipelines | **MCP** | Type-safe parameters, structured output |
 
-## MCP Tools (20 — 12 read, 8 write)
+## MCP Tools (20 — 13 read, 7 write)
 
 All accept optional `target` parameter to specify a named vCenter.
 
@@ -198,9 +198,9 @@ vmware-vks namespace delete <name> [--target <name>]
 # TKC Clusters
 vmware-vks tkc list [-n <namespace>] [--target <name>]
 vmware-vks tkc create <name> -n <ns> [--version <v>] [--workers <n>] [--vm-class <name>] [--apply]
-vmware-vks tkc scale <name> -n <ns> --workers <n> [--target <name>]
+vmware-vks tkc scale <name> -n <ns> --workers <n> [--pool <name>] [--target <name>]
 vmware-vks tkc upgrade <name> -n <ns> --version <v> [--target <name>]
-vmware-vks tkc delete <name> -n <ns> [--force] [--target <name>]
+vmware-vks tkc delete <name> -n <ns> [--skip-workload-check] [--target <name>]
 
 # Kubeconfig
 vmware-vks kubeconfig supervisor -n <namespace> [--target <name>]

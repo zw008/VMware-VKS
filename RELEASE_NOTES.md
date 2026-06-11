@@ -1,3 +1,24 @@
+## v1.5.36 (2026-06-12) — correct Supervisor authentication + safety fixes
+
+### Fixed
+- **Supervisor/TKC authentication rewritten** — the Kubernetes bearer token was the pyVmomi SOAP
+  session key, which a real Supervisor rejects; it now comes from `POST /wcp/login` (the JWT that
+  `kubectl vsphere login` uses), cached per host/user with TTL + 401 invalidation.
+  *(This auth path should be smoke-tested against a live Supervisor before relying on it.)*
+- **`scale_tkc_cluster` no longer wipes the worker pool spec** — the merge-patch replaced the whole
+  machineDeployments list (dropping `class: node-pool`); it now reads, edits the matched pool, and
+  patches the full preserved list.
+- **Namespace-delete TKC guard fails closed** — it previously deleted a namespace with clusters
+  inside if the Kubernetes API was unreachable.
+- **Stale session metadata is evicted immediately** (fixing an `id(si)`-reuse hazard) and a latent
+  `vmodl.fault.NotAuthenticated` AttributeError on eviction was corrected.
+- `dry_run` previews no longer require `confirmed=True`; topology access is null-guarded; CLI writes
+  are audited; `tkc delete --force` renamed to `--skip-workload-check` so `--force` means one thing.
+
+### Added
+- Centralized `VksApiError` translation across the REST and Kubernetes paths (teaching hints,
+  GET-only transient retry).
+
 ## v1.5.35 (2026-06-10) — security fix: kubeconfig TLS bypass + token-file hardening
 
 ### Fixed

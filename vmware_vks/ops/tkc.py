@@ -21,7 +21,16 @@ if TYPE_CHECKING:
 
 from vmware_policy import sanitize
 
+from vmware_vks.errors import VksApiError
+
 _log = logging.getLogger("vmware-vks.ops.tkc")
+
+
+def _translate_api_exception(si, exc, resource: str, namespace: str):
+    """Wrap kubernetes ApiException into a teaching VksApiError (踩坑 #37)."""
+    from vmware_vks.k8s_connection import translate_k8s_error
+
+    return translate_k8s_error(si, exc, resource=resource, namespace=namespace)
 
 _TKC_GROUP = "cluster.x-k8s.io"
 _TKC_VERSION_FALLBACK = "v1beta1"
@@ -138,26 +147,31 @@ def generate_tkc_yaml(
 
 def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict:
     """List TKC clusters in a namespace (or all namespaces)."""
+    import kubernetes as k8s
+
     ns = namespace or "default"
     version = _resolve_tkc_version(si, ns)
     api = _get_custom_objects_api(si, ns)
     try:
-        if namespace:
-            raw = api.list_namespaced_custom_object(
-                group=_TKC_GROUP, version=version,
-                namespace=namespace, plural=_TKC_PLURAL,
-            )
-        else:
-            raw = api.list_cluster_custom_object(
-                group=_TKC_GROUP, version=version, plural=_TKC_PLURAL,
-            )
+        try:
+            if namespace:
+                raw = api.list_namespaced_custom_object(
+                    group=_TKC_GROUP, version=version,
+                    namespace=namespace, plural=_TKC_PLURAL,
+                )
+            else:
+                raw = api.list_cluster_custom_object(
+                    group=_TKC_GROUP, version=version, plural=_TKC_PLURAL,
+                )
+        except k8s.client.exceptions.ApiException as e:
+            raise _translate_api_exception(si, e, resource="(list)", namespace=ns) from e
         items = raw.get("items", [])
         clusters = [
             {
                 "name": sanitize(item["metadata"]["name"]),
                 "namespace": sanitize(item["metadata"]["namespace"]),
                 "phase": item.get("status", {}).get("phase", "Unknown"),
-                "k8s_version": item["spec"]["topology"].get("version", ""),
+                "k8s_version": item.get("spec", {}).get("topology", {}).get("version", ""),
             }
             for item in items
         ]
@@ -168,13 +182,18 @@ def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict
 
 def get_tkc_cluster(si: ServiceInstance, name: str, namespace: str) -> dict:
     """Get detailed TKC cluster info."""
+    import kubernetes as k8s
+
     version = _resolve_tkc_version(si, namespace)
     api = _get_custom_objects_api(si, namespace)
     try:
-        raw = api.get_namespaced_custom_object(
-            group=_TKC_GROUP, version=version,
-            namespace=namespace, plural=_TKC_PLURAL, name=name,
-        )
+        try:
+            raw = api.get_namespaced_custom_object(
+                group=_TKC_GROUP, version=version,
+                namespace=namespace, plural=_TKC_PLURAL, name=name,
+            )
+        except k8s.client.exceptions.ApiException as e:
+            raise _translate_api_exception(si, e, resource=name, namespace=namespace) from e
         status = raw.get("status", {})
         conditions = [
             {
@@ -184,13 +203,21 @@ def get_tkc_cluster(si: ServiceInstance, name: str, namespace: str) -> dict:
             }
             for c in status.get("conditions", [])
         ]
+        # Guard nested lookups — a half-provisioned cluster may miss any level.
+        topology = raw.get("spec", {}).get("topology", {})
+        machine_deployments = (
+            topology.get("workers", {}).get("machineDeployments") or []
+        )
+        worker_replicas = (
+            machine_deployments[0].get("replicas") if machine_deployments else None
+        )
         return {
             "name": name,
             "namespace": namespace,
             "phase": status.get("phase"),
-            "k8s_version": raw["spec"]["topology"].get("version"),
-            "control_plane_replicas": raw["spec"]["topology"]["controlPlane"].get("replicas"),
-            "worker_replicas": raw["spec"]["topology"]["workers"]["machineDeployments"][0].get("replicas"),
+            "k8s_version": topology.get("version"),
+            "control_plane_replicas": topology.get("controlPlane", {}).get("replicas"),
+            "worker_replicas": worker_replicas,
             "conditions": conditions,
             "infrastructure_ready": status.get("infrastructureReady", False),
             "control_plane_ready": status.get("controlPlaneReady", False),
@@ -257,41 +284,107 @@ def create_tkc_cluster(
             "hint": "Set dry_run=False to apply this manifest.",
         }
 
+    import kubernetes as k8s
+
     manifest = yaml.safe_load(yaml_str)
     api = _get_custom_objects_api(si, namespace)
     try:
-        api.create_namespaced_custom_object(
-            group=_TKC_GROUP, version=version,
-            namespace=namespace, plural=_TKC_PLURAL, body=manifest,
-        )
+        try:
+            api.create_namespaced_custom_object(
+                group=_TKC_GROUP, version=version,
+                namespace=namespace, plural=_TKC_PLURAL, body=manifest,
+            )
+        except k8s.client.exceptions.ApiException as e:
+            raise _translate_api_exception(si, e, resource=name, namespace=namespace) from e
         return {"name": name, "namespace": namespace, "status": "creating", "yaml": yaml_str}
     finally:
         api.api_client.close()
 
 
 def scale_tkc_cluster(
-    si: ServiceInstance, name: str, namespace: str, worker_count: int
+    si: ServiceInstance,
+    name: str,
+    namespace: str,
+    worker_count: int,
+    pool_name: str | None = None,
 ) -> dict:
-    """Scale TKC worker node count."""
+    """Scale TKC worker node count.
+
+    Merge-patch semantics REPLACE the machineDeployments list wholesale, so we
+    GET the cluster first, update only the requested pool's replicas, and PATCH
+    the full preserved list — otherwise the patch would wipe each pool's
+    ``class`` field and drop every other node pool.
+
+    Args:
+        pool_name: machineDeployment to scale. Defaults to the first existing
+            pool (NOT a hardcoded name).
+    """
     if worker_count < 1:
         raise ValueError(f"worker_count must be >= 1, got {worker_count}")
+
+    import kubernetes as k8s
+
     version = _resolve_tkc_version(si, namespace)
     api = _get_custom_objects_api(si, namespace)
     try:
+        try:
+            cluster = api.get_namespaced_custom_object(
+                group=_TKC_GROUP, version=version,
+                namespace=namespace, plural=_TKC_PLURAL, name=name,
+            )
+        except k8s.client.exceptions.ApiException as e:
+            raise _translate_api_exception(si, e, resource=name, namespace=namespace) from e
+
+        pools = (
+            cluster.get("spec", {})
+            .get("topology", {})
+            .get("workers", {})
+            .get("machineDeployments")
+            or []
+        )
+        if not pools:
+            raise VksApiError(
+                f"TKC cluster '{name}' has no machineDeployments to scale — "
+                "is it fully provisioned? Run get_tkc_cluster to inspect."
+            )
+
+        if pool_name is None:
+            idx = 0
+        else:
+            available = [p.get("name") for p in pools]
+            try:
+                idx = available.index(pool_name)
+            except ValueError:
+                raise VksApiError(
+                    f"Node pool '{pool_name}' not found in TKC cluster "
+                    f"'{name}'. Available pools: {', '.join(str(a) for a in available)}."
+                ) from None
+
+        # New list, new dict for the changed pool — preserve class and all
+        # other pools untouched (immutability: do not mutate the GET result).
+        new_pools = [
+            {**p, "replicas": worker_count} if i == idx else p
+            for i, p in enumerate(pools)
+        ]
         patch = {
             "spec": {
-                "topology": {
-                    "workers": {
-                        "machineDeployments": [{"name": "worker-pool", "replicas": worker_count}]
-                    }
-                }
+                "topology": {"workers": {"machineDeployments": new_pools}}
             }
         }
-        api.patch_namespaced_custom_object(
-            group=_TKC_GROUP, version=version,
-            namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
-        )
-        return {"name": name, "namespace": namespace, "worker_count": worker_count, "status": "scaling"}
+        try:
+            api.patch_namespaced_custom_object(
+                group=_TKC_GROUP, version=version,
+                namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
+            )
+        except k8s.client.exceptions.ApiException as e:
+            raise _translate_api_exception(si, e, resource=name, namespace=namespace) from e
+        return {
+            "name": name,
+            "namespace": namespace,
+            "pool": new_pools[idx].get("name"),
+            "worker_count": worker_count,
+            "status": "scaling",
+        }
     finally:
         api.api_client.close()
 
@@ -300,14 +393,19 @@ def upgrade_tkc_cluster(
     si: ServiceInstance, name: str, namespace: str, k8s_version: str
 ) -> dict:
     """Upgrade TKC cluster K8s version."""
+    import kubernetes as k8s
+
     version = _resolve_tkc_version(si, namespace)
     api = _get_custom_objects_api(si, namespace)
     try:
         patch = {"spec": {"topology": {"version": k8s_version}}}
-        api.patch_namespaced_custom_object(
-            group=_TKC_GROUP, version=version,
-            namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
-        )
+        try:
+            api.patch_namespaced_custom_object(
+                group=_TKC_GROUP, version=version,
+                namespace=namespace, plural=_TKC_PLURAL, name=name, body=patch,
+            )
+        except k8s.client.exceptions.ApiException as e:
+            raise _translate_api_exception(si, e, resource=name, namespace=namespace) from e
         return {"name": name, "namespace": namespace, "new_version": k8s_version, "status": "upgrading"}
     finally:
         api.api_client.close()
@@ -375,13 +473,10 @@ def delete_tkc_cluster(
 ) -> dict:
     """Delete a TKC cluster with workload guard.
 
-    Guards: confirmed=True required; rejects if workloads running (unless force=True).
+    Guards: rejects if workloads running (unless force=True);
+    confirmed=True required for the actual delete. dry_run is evaluated
+    BEFORE confirmed — a preview never needs confirmation.
     """
-    if not confirmed:
-        raise ValueError(
-            f"confirmed=True required to delete TKC cluster '{name}'."
-        )
-
     if not force:
         workloads = _check_running_workloads(si, name, namespace)
         if workloads:
@@ -401,13 +496,23 @@ def delete_tkc_cluster(
             "warning": "This will permanently delete the TKC cluster.",
         }
 
+    if not confirmed:
+        raise ValueError(
+            f"confirmed=True required to delete TKC cluster '{name}'."
+        )
+
+    import kubernetes as k8s
+
     version = _resolve_tkc_version(si, namespace)
     api = _get_custom_objects_api(si, namespace)
     try:
-        api.delete_namespaced_custom_object(
-            group=_TKC_GROUP, version=version,
-            namespace=namespace, plural=_TKC_PLURAL, name=name,
-        )
+        try:
+            api.delete_namespaced_custom_object(
+                group=_TKC_GROUP, version=version,
+                namespace=namespace, plural=_TKC_PLURAL, name=name,
+            )
+        except k8s.client.exceptions.ApiException as e:
+            raise _translate_api_exception(si, e, resource=name, namespace=namespace) from e
         return {"name": name, "namespace": namespace, "status": "deleting"}
     finally:
         api.api_client.close()

@@ -53,9 +53,11 @@ def test_create_namespace_dry_run():
 
 
 def test_delete_namespace_requires_confirmed():
+    # dry_run=False + confirmed=False must be refused (TKC guard clean).
     si = _mock_si()
-    with pytest.raises(ValueError, match="confirmed=True"):
-        delete_namespace(si, "dev", confirmed=False)
+    with patch("vmware_vks.ops.namespace._list_tkc_in_namespace", return_value=[]):
+        with pytest.raises(ValueError, match="confirmed=True"):
+            delete_namespace(si, "dev", confirmed=False, dry_run=False)
 
 
 def test_delete_namespace_rejects_if_tkc_exists():

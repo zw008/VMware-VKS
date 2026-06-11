@@ -31,6 +31,7 @@ from vmware_policy import sanitize, vmware_tool
 
 from vmware_vks.config import load_config
 from vmware_vks.connection import ConnectionManager
+from vmware_vks.errors import VksApiError
 from vmware_vks.notify.audit import AuditLogger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vmware-vks.mcp")
@@ -41,10 +42,14 @@ def _safe_error(exc: Exception, tool: str) -> str:
     Raw exception text can carry API response bodies, internal paths, or
     host:port pairs. Full traceback goes to the server log; the agent sees only
     a control-char-stripped, length-capped message. Intentional validation
-    errors (ValueError/FileNotFoundError/KeyError/PermissionError) pass through.
+    errors (ValueError/FileNotFoundError/KeyError/PermissionError) and
+    teaching errors (VksApiError, already sanitized at the connection layer)
+    pass through.
     """
     logger.error("Tool %s failed", tool, exc_info=True)
-    if isinstance(exc, (ValueError, FileNotFoundError, KeyError, PermissionError)):
+    if isinstance(
+        exc, (VksApiError, ValueError, FileNotFoundError, KeyError, PermissionError)
+    ):
         return sanitize(str(exc), 300)
     return f"{type(exc).__name__}: operation failed."
 
@@ -208,11 +213,11 @@ def create_namespace(
         memory_limit_mib: Memory limit in MiB (optional).
         dry_run: Preview without creating (default: True).
     """
-    si = _get_si(target)
     from vmware_vks.ops import namespace as _ns
     t = target or "default"
     params = {"cluster_id": cluster_id, "storage_policy": storage_policy}
     try:
+        si = _get_si(target)
         result = _ns.create_namespace(
             si, name=name, cluster_id=cluster_id, storage_policy=storage_policy,
             cpu_limit=cpu_limit, memory_limit_mib=memory_limit_mib,
@@ -223,9 +228,9 @@ def create_namespace(
             _audit.log(
                 target=t, operation="create_namespace",
                 resource=name, parameters=params,
-                result=f"failed: {sanitize(str(e), 200)}",
+                result=f"error: {sanitize(str(e), 200)}",
             )
-        raise
+        return {"error": _safe_error(e, "create_namespace")}
     if not dry_run:
         _audit.log(
             target=t, operation="create_namespace",
@@ -262,17 +267,17 @@ def update_namespace(
         target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
             use the default target defined in that file.
     """
-    si = _get_si(target)
     from vmware_vks.ops import namespace as _ns
     t = target or "default"
     try:
+        si = _get_si(target)
         result = _ns.update_namespace(si, name, cpu_limit=cpu_limit,
                                       memory_limit_mib=memory_limit_mib,
                                       storage_policy=storage_policy)
     except Exception as e:
         _audit.log(target=t, operation="update_namespace",
-                   resource=name, parameters={}, result=f"failed: {sanitize(str(e), 200)}")
-        raise
+                   resource=name, parameters={}, result=f"error: {sanitize(str(e), 200)}")
+        return {"error": _safe_error(e, "update_namespace")}
     _audit.log(target=t, operation="update_namespace",
                resource=name, parameters={}, result="success")
     return result
@@ -296,16 +301,16 @@ def delete_namespace(
         confirmed: Must be True to proceed (safety gate).
         dry_run: Preview without deleting (default: True).
     """
-    si = _get_si(target)
     from vmware_vks.ops import namespace as _ns
     t = target or "default"
     try:
+        si = _get_si(target)
         result = _ns.delete_namespace(si, name, confirmed=confirmed, dry_run=dry_run)
     except Exception as e:
         if not dry_run and confirmed:
             _audit.log(target=t, operation="delete_namespace",
-                       resource=name, parameters={}, result=f"failed: {sanitize(str(e), 200)}")
-        raise
+                       resource=name, parameters={}, result=f"error: {sanitize(str(e), 200)}")
+        return {"error": _safe_error(e, "delete_namespace")}
     if not dry_run and confirmed:
         _audit.log(target=t, operation="delete_namespace",
                    resource=name, parameters={}, result="success")
@@ -433,11 +438,11 @@ def create_tkc_cluster(
         storage_class: Storage class name.
         dry_run: Return YAML plan without applying (default: True).
     """
-    si = _get_si(target)
     from vmware_vks.ops import tkc as _tkc
     t = target or "default"
     params = {"k8s_version": k8s_version, "vm_class": vm_class, "workers": worker_count}
     try:
+        si = _get_si(target)
         result = _tkc.create_tkc_cluster(
             si, name=name, namespace=namespace, k8s_version=k8s_version,
             vm_class=vm_class, control_plane_count=control_plane_count,
@@ -449,9 +454,9 @@ def create_tkc_cluster(
                 target=t, operation="create_tkc_cluster",
                 resource=f"{namespace}/{name}",
                 parameters=params,
-                result=f"failed: {sanitize(str(e), 200)}",
+                result=f"error: {sanitize(str(e), 200)}",
             )
-        raise
+        return {"error": _safe_error(e, "create_tkc_cluster")}
     if not dry_run:
         _audit.log(
             target=t, operation="create_tkc_cluster",
@@ -465,7 +470,11 @@ def create_tkc_cluster(
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
 @vmware_tool(risk_level="medium")
 def scale_tkc_cluster(
-    name: str, namespace: str, worker_count: int, target: Optional[str] = None
+    name: str,
+    namespace: str,
+    worker_count: int,
+    pool_name: Optional[str] = None,
+    target: Optional[str] = None,
 ) -> dict:
     """[WRITE] Scale the worker node count of an existing TanzuKubernetesCluster (TKC).
 
@@ -482,21 +491,26 @@ def scale_tkc_cluster(
         namespace: vSphere Namespace containing the cluster.
         worker_count: Desired total worker node count, integer >= 1 (values
             below 1 are rejected with an error).
+        pool_name: Node pool (machineDeployment) to scale. Omit to scale the
+            first existing pool. Other pools are always preserved.
         target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
             use the default target defined in that file.
     """
-    si = _get_si(target)
     from vmware_vks.ops import tkc as _tkc
     t = target or "default"
+    params = {"worker_count": worker_count, "pool_name": pool_name}
     try:
-        result = _tkc.scale_tkc_cluster(si, name, namespace, worker_count)
+        si = _get_si(target)
+        result = _tkc.scale_tkc_cluster(
+            si, name, namespace, worker_count, pool_name=pool_name
+        )
     except Exception as e:
         _audit.log(target=t, operation="scale_tkc_cluster",
-                   resource=f"{namespace}/{name}", parameters={"worker_count": worker_count},
-                   result=f"failed: {sanitize(str(e), 200)}")
-        raise
+                   resource=f"{namespace}/{name}", parameters=params,
+                   result=f"error: {sanitize(str(e), 200)}")
+        return {"error": _safe_error(e, "scale_tkc_cluster")}
     _audit.log(target=t, operation="scale_tkc_cluster",
-               resource=f"{namespace}/{name}", parameters={"worker_count": worker_count},
+               resource=f"{namespace}/{name}", parameters=params,
                result="success")
     return result
 
@@ -513,16 +527,16 @@ def upgrade_tkc_cluster(
         namespace: vSphere Namespace.
         k8s_version: Target K8s version (use get_tkc_available_versions to list).
     """
-    si = _get_si(target)
     from vmware_vks.ops import tkc as _tkc
     t = target or "default"
     try:
+        si = _get_si(target)
         result = _tkc.upgrade_tkc_cluster(si, name, namespace, k8s_version)
     except Exception as e:
         _audit.log(target=t, operation="upgrade_tkc_cluster",
                    resource=f"{namespace}/{name}", parameters={"k8s_version": k8s_version},
-                   result=f"failed: {sanitize(str(e), 200)}")
-        raise
+                   result=f"error: {sanitize(str(e), 200)}")
+        return {"error": _safe_error(e, "upgrade_tkc_cluster")}
     _audit.log(target=t, operation="upgrade_tkc_cluster",
                resource=f"{namespace}/{name}", parameters={"k8s_version": k8s_version},
                result="success")
@@ -551,10 +565,10 @@ def delete_tkc_cluster(
         dry_run: Preview without deleting (default: True).
         force: Skip workload check (dangerous).
     """
-    si = _get_si(target)
     from vmware_vks.ops import tkc as _tkc
     t = target or "default"
     try:
+        si = _get_si(target)
         result = _tkc.delete_tkc_cluster(
             si, name, namespace, confirmed=confirmed, dry_run=dry_run, force=force,
         )
@@ -562,8 +576,8 @@ def delete_tkc_cluster(
         if not dry_run and confirmed:
             _audit.log(target=t, operation="delete_tkc_cluster",
                        resource=f"{namespace}/{name}", parameters={"force": force},
-                       result=f"failed: {sanitize(str(e), 200)}")
-        raise
+                       result=f"error: {sanitize(str(e), 200)}")
+        return {"error": _safe_error(e, "delete_tkc_cluster")}
     if not dry_run and confirmed:
         _audit.log(target=t, operation="delete_tkc_cluster",
                    resource=f"{namespace}/{name}", parameters={"force": force},

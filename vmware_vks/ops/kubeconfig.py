@@ -28,17 +28,22 @@ def build_tkc_kubeconfig(
     the bearer token in memory.
     """
     import kubernetes as k8s
-    from vmware_vks.k8s_connection import get_k8s_client
+    from vmware_vks.k8s_connection import get_k8s_client, translate_k8s_error
     from vmware_vks.ops.tkc import _resolve_tkc_version
 
     version = _resolve_tkc_version(si, namespace)
     api_client = get_k8s_client(si, namespace)
     try:
         custom_api = k8s.client.CustomObjectsApi(api_client)
-        cluster = custom_api.get_namespaced_custom_object(
-            group="cluster.x-k8s.io", version=version,
-            namespace=namespace, plural="clusters", name=cluster_name,
-        )
+        try:
+            cluster = custom_api.get_namespaced_custom_object(
+                group="cluster.x-k8s.io", version=version,
+                namespace=namespace, plural="clusters", name=cluster_name,
+            )
+        except k8s.client.exceptions.ApiException as e:
+            raise translate_k8s_error(
+                si, e, resource=cluster_name, namespace=namespace
+            ) from e
 
         control_plane_endpoint = cluster.get("spec", {}).get("controlPlaneEndpoint", {})
         host = control_plane_endpoint.get("host", "")
@@ -50,7 +55,11 @@ def build_tkc_kubeconfig(
                 "Is the cluster fully provisioned?"
             )
 
-        token = si.content.sessionManager.currentSession.key
+        # Supervisor JWT from POST /wcp/login — the SOAP session key is not
+        # a valid K8s bearer token (see vmware_vks.wcp_login).
+        from vmware_vks.wcp_login import get_wcp_token
+
+        token = get_wcp_token(si)
         # Honour verify_ssl (see k8s_connection); only lab/self-signed skips TLS.
         from vmware_vks.connection import get_verify_ssl
 

@@ -1,13 +1,17 @@
 """Typer CLI for vmware-vks."""
 from __future__ import annotations
 
+import functools
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
+
+from vmware_vks.errors import VksApiError
 
 app = typer.Typer(name="vmware-vks", help="vSphere with Tanzu (VKS) management CLI")
 supervisor_app = typer.Typer(help="Supervisor cluster commands")
@@ -61,6 +65,43 @@ def _get_si(target: str | None = None):
     return mgr.connect(target)
 
 
+def _cli_errors(fn):
+    """Translate expected failures into a red one-liner + exit code 1.
+
+    Centralized error handling (踩坑 #37): users see a teaching message,
+    never a raw traceback. typer.Exit/Abort pass through untouched (they
+    subclass RuntimeError via click).
+    """
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except (typer.Exit, typer.Abort):
+            raise
+        except (VksApiError, FileNotFoundError, KeyError, OSError, RuntimeError) as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1) from e
+    return wrapper
+
+
+def _audit_cli(
+    target: Optional[str],
+    operation: str,
+    resource: str,
+    parameters: dict,
+    result: str,
+) -> None:
+    """Best-effort CLI write audit — failure degrades to a stderr warning."""
+    try:
+        from vmware_vks.notify.audit import AuditLogger
+        AuditLogger().log(
+            target=target or "default", operation=operation,
+            resource=resource, parameters=parameters, result=result,
+        )
+    except Exception as e:  # never block the main operation on audit failure
+        print(f"Warning: audit log write failed: {e}", file=sys.stderr)
+
+
 def _double_confirm(resource: str, resource_type: str = "resource") -> bool:
     console.print(f"[red]WARNING: You are about to delete {resource_type} '{resource}'.[/red]")
     typed = typer.prompt(f"Type '{resource}' to confirm")
@@ -78,6 +119,7 @@ def cmd_check(
 
 
 @supervisor_app.command("status")
+@_cli_errors
 def supervisor_status(
     cluster_id: str = typer.Argument(..., help="Compute cluster MoRef (e.g. domain-c1)"),
     target: Optional[str] = typer.Option(None, "-t", "--target"),
@@ -91,6 +133,7 @@ def supervisor_status(
 
 
 @supervisor_app.command("storage-policies")
+@_cli_errors
 def supervisor_storage_policies(
     target: Optional[str] = typer.Option(None, "-t", "--target"),
 ):
@@ -105,6 +148,7 @@ def supervisor_storage_policies(
 
 
 @namespace_app.command("list")
+@_cli_errors
 def namespace_list(
     target: Optional[str] = typer.Option(None, "-t", "--target"),
 ):
@@ -119,6 +163,7 @@ def namespace_list(
 
 
 @namespace_app.command("get")
+@_cli_errors
 def namespace_get(
     name: str = typer.Argument(...),
     target: Optional[str] = typer.Option(None, "-t", "--target"),
@@ -132,6 +177,7 @@ def namespace_get(
 
 
 @namespace_app.command("create")
+@_cli_errors
 def namespace_create(
     name: str = typer.Argument(...),
     cluster_id: str = typer.Option(..., "--cluster", help="Supervisor cluster MoRef"),
@@ -146,15 +192,24 @@ def namespace_create(
     import json
     from vmware_vks.ops.namespace import create_namespace
     si = _get_si(target)
-    result = create_namespace(
-        si, name=name, cluster_id=cluster_id, storage_policy=storage_policy,
-        cpu_limit=cpu_limit, memory_limit_mib=memory_mib,
-        description=description, dry_run=not apply,
-    )
+    params = {"cluster_id": cluster_id, "storage_policy": storage_policy}
+    try:
+        result = create_namespace(
+            si, name=name, cluster_id=cluster_id, storage_policy=storage_policy,
+            cpu_limit=cpu_limit, memory_limit_mib=memory_mib,
+            description=description, dry_run=not apply,
+        )
+    except Exception as e:
+        if apply:
+            _audit_cli(target, "create_namespace", name, params, f"failed: {e}")
+        raise
+    if apply:
+        _audit_cli(target, "create_namespace", name, params, "success")
     console.print_json(json.dumps(result))
 
 
 @namespace_app.command("update")
+@_cli_errors
 def namespace_update(
     name: str = typer.Argument(...),
     cpu_limit: Optional[int] = typer.Option(None, "--cpu"),
@@ -172,6 +227,7 @@ def namespace_update(
 
 
 @namespace_app.command("delete")
+@_cli_errors
 def namespace_delete(
     name: str = typer.Argument(...),
     force: bool = typer.Option(False, "--force", help="Skip interactive confirm"),
@@ -191,11 +247,17 @@ def namespace_delete(
             console.print("[yellow]Aborted.[/yellow]")
             raise typer.Exit(1)
 
-    result = delete_namespace(si, name, confirmed=True, dry_run=False)
+    try:
+        result = delete_namespace(si, name, confirmed=True, dry_run=False)
+    except Exception as e:
+        _audit_cli(target, "delete_namespace", name, {}, f"failed: {e}")
+        raise
+    _audit_cli(target, "delete_namespace", name, {}, "success")
     console.print_json(json.dumps(result))
 
 
 @namespace_app.command("vm-classes")
+@_cli_errors
 def namespace_vm_classes(
     target: Optional[str] = typer.Option(None, "-t", "--target"),
 ):
@@ -214,6 +276,7 @@ def namespace_vm_classes(
 # ---------------------------------------------------------------------------
 
 @tkc_app.command("list")
+@_cli_errors
 def tkc_list(
     namespace: Optional[str] = typer.Option(None, "-n", "--namespace"),
     target: Optional[str] = typer.Option(None, "-t", "--target"),
@@ -230,6 +293,7 @@ def tkc_list(
 
 
 @tkc_app.command("get")
+@_cli_errors
 def tkc_get(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
@@ -244,6 +308,7 @@ def tkc_get(
 
 
 @tkc_app.command("versions")
+@_cli_errors
 def tkc_versions(
     namespace: str = typer.Option(..., "-n", "--namespace", help="vSphere Namespace"),
     target: Optional[str] = typer.Option(None, "-t", "--target"),
@@ -263,6 +328,7 @@ def tkc_versions(
 
 
 @tkc_app.command("create")
+@_cli_errors
 def tkc_create(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
@@ -299,31 +365,53 @@ def tkc_create(
             console.print(f"Available VM classes: {', '.join(class_choices[:5])}")
         vm_class = typer.prompt("VM class")
 
-    result = create_tkc_cluster(
-        si, name=name, namespace=namespace, k8s_version=k8s_version,
-        vm_class=vm_class, control_plane_count=control_plane,
-        worker_count=workers, storage_class=storage_policy,
-        dry_run=not apply,
-    )
+    params = {"k8s_version": k8s_version, "vm_class": vm_class, "workers": workers}
+    try:
+        result = create_tkc_cluster(
+            si, name=name, namespace=namespace, k8s_version=k8s_version,
+            vm_class=vm_class, control_plane_count=control_plane,
+            worker_count=workers, storage_class=storage_policy,
+            dry_run=not apply,
+        )
+    except Exception as e:
+        if apply:
+            _audit_cli(target, "create_tkc_cluster", f"{namespace}/{name}",
+                       params, f"failed: {e}")
+        raise
+    if apply:
+        _audit_cli(target, "create_tkc_cluster", f"{namespace}/{name}",
+                   params, "success")
     console.print_json(json.dumps(result))
 
 
 @tkc_app.command("scale")
+@_cli_errors
 def tkc_scale(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
     workers: int = typer.Option(..., "--workers"),
+    pool: Optional[str] = typer.Option(
+        None, "--pool", help="Node pool (machineDeployment) name; defaults to the first pool"
+    ),
     target: Optional[str] = typer.Option(None, "-t", "--target"),
 ):
-    """Scale TKC cluster worker node count."""
+    """Scale TKC cluster worker node count (other node pools are preserved)."""
     import json
     from vmware_vks.ops.tkc import scale_tkc_cluster
     si = _get_si(target)
-    result = scale_tkc_cluster(si, name, namespace, workers)
+    params = {"worker_count": workers, "pool": pool}
+    try:
+        result = scale_tkc_cluster(si, name, namespace, workers, pool_name=pool)
+    except Exception as e:
+        _audit_cli(target, "scale_tkc_cluster", f"{namespace}/{name}",
+                   params, f"failed: {e}")
+        raise
+    _audit_cli(target, "scale_tkc_cluster", f"{namespace}/{name}", params, "success")
     console.print_json(json.dumps(result))
 
 
 @tkc_app.command("upgrade")
+@_cli_errors
 def tkc_upgrade(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
@@ -334,15 +422,28 @@ def tkc_upgrade(
     import json
     from vmware_vks.ops.tkc import upgrade_tkc_cluster
     si = _get_si(target)
-    result = upgrade_tkc_cluster(si, name, namespace, version)
+    params = {"k8s_version": version}
+    try:
+        result = upgrade_tkc_cluster(si, name, namespace, version)
+    except Exception as e:
+        _audit_cli(target, "upgrade_tkc_cluster", f"{namespace}/{name}",
+                   params, f"failed: {e}")
+        raise
+    _audit_cli(target, "upgrade_tkc_cluster", f"{namespace}/{name}", params, "success")
     console.print_json(json.dumps(result))
 
 
 @tkc_app.command("delete")
+@_cli_errors
 def tkc_delete(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
-    force: bool = typer.Option(False, "--force"),
+    skip_workload_check: bool = typer.Option(
+        False,
+        "--skip-workload-check",
+        help="Skip the running-workload guard (dangerous). The interactive "
+        "name confirmation is always required.",
+    ),
     target: Optional[str] = typer.Option(None, "-t", "--target"),
 ):
     """Delete a TKC cluster (rejects if workloads running)."""
@@ -352,14 +453,26 @@ def tkc_delete(
     si = _get_si(target)
 
     # Show dry-run first
-    dry = delete_tkc_cluster(si, name, namespace, confirmed=True, dry_run=True, force=force)
+    dry = delete_tkc_cluster(
+        si, name, namespace, confirmed=True, dry_run=True, force=skip_workload_check
+    )
     console.print_json(json.dumps(dry))
 
     if not _double_confirm(name, "TKC cluster"):
         console.print("[yellow]Aborted.[/yellow]")
         raise typer.Exit(1)
 
-    result = delete_tkc_cluster(si, name, namespace, confirmed=True, dry_run=False, force=force)
+    params = {"skip_workload_check": skip_workload_check}
+    try:
+        result = delete_tkc_cluster(
+            si, name, namespace, confirmed=True, dry_run=False,
+            force=skip_workload_check,
+        )
+    except Exception as e:
+        _audit_cli(target, "delete_tkc_cluster", f"{namespace}/{name}",
+                   params, f"failed: {e}")
+        raise
+    _audit_cli(target, "delete_tkc_cluster", f"{namespace}/{name}", params, "success")
     console.print_json(json.dumps(result))
 
 
@@ -368,6 +481,7 @@ def tkc_delete(
 # ---------------------------------------------------------------------------
 
 @kubeconfig_app.command("supervisor")
+@_cli_errors
 def kubeconfig_supervisor(
     namespace: str = typer.Option(..., "-n", "--namespace"),
     target: Optional[str] = typer.Option(None, "-t", "--target"),
@@ -380,6 +494,7 @@ def kubeconfig_supervisor(
 
 
 @kubeconfig_app.command("get")
+@_cli_errors
 def kubeconfig_get(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
@@ -402,6 +517,7 @@ def kubeconfig_get(
 # ---------------------------------------------------------------------------
 
 @app.command("harbor")
+@_cli_errors
 def harbor_info(
     target: Optional[str] = typer.Option(None, "-t", "--target"),
 ):
@@ -418,6 +534,7 @@ def harbor_info(
 # ---------------------------------------------------------------------------
 
 @app.command("storage")
+@_cli_errors
 def storage_usage(
     namespace: str = typer.Option(..., "-n", "--namespace"),
     target: Optional[str] = typer.Option(None, "-t", "--target"),

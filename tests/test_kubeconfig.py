@@ -45,12 +45,17 @@ def test_get_tkc_kubeconfig_returns_string():
 
     with patch("vmware_vks.k8s_connection.get_k8s_client", return_value=mock_api_client):
         with patch("kubernetes.client.CustomObjectsApi", return_value=mock_custom_api):
-            result = get_tkc_kubeconfig_str(si, "my-cluster", "dev")
+            with patch(
+                "vmware_vks.wcp_login.get_wcp_token", return_value="wcp-jwt-token"
+            ):
+                result = get_tkc_kubeconfig_str(si, "my-cluster", "dev")
 
     assert isinstance(result, str)
     assert "my-cluster" in result
     assert "https://10.0.0.100:6443" in result
-    assert "session-123" in result
+    # Bearer token must be the /wcp/login JWT — NOT the pyVmomi SOAP session key.
+    assert "wcp-jwt-token" in result
+    assert "session-123" not in result
 
 
 def test_write_kubeconfig_to_file(tmp_path):

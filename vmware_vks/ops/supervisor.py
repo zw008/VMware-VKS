@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import ssl
+import time
 import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Any
@@ -18,6 +20,11 @@ if TYPE_CHECKING:
 from vmware_policy import sanitize
 
 from vmware_vks.connection import get_verify_ssl
+from vmware_vks.errors import (
+    TRANSIENT_STATUS_CODES,
+    VksApiError,
+    rest_hint_for_status,
+)
 
 _log = logging.getLogger("vmware-vks.ops.supervisor")
 
@@ -60,6 +67,10 @@ def _rest_request(
     Handles GET/POST/PATCH/PUT/DELETE with uniform SSL verification and
     timeout behaviour. Returns parsed JSON on success; returns ``None`` when
     the response body is empty (e.g. DELETE).
+
+    Errors are centrally translated into VksApiError with a teaching hint
+    (踩坑 #37 — no raw raise_for_status-style tracebacks reach the user).
+    Transient gateway errors (502/503/504) are retried once for GETs only.
     """
     host = _vcenter_host(si)
     session_id = si.content.sessionManager.currentSession.key
@@ -73,13 +84,39 @@ def _rest_request(
         data = json.dumps(body).encode()
 
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, context=ctx, timeout=_REST_TIMEOUT) as resp:  # nosec B310
-            raw = resp.read()
-            return json.loads(raw) if raw else None
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode(errors="replace")
-        raise RuntimeError(f"REST {method} {path} failed ({e.code}): {detail}") from e
+
+    attempts = 2 if method == "GET" else 1
+    last_error: VksApiError | None = None
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(req, context=ctx, timeout=_REST_TIMEOUT) as resp:  # nosec B310
+                raw = resp.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            detail = sanitize(e.read().decode(errors="replace"), 300)
+            last_error = VksApiError(
+                f"REST {method} {path} failed ({e.code}): {detail}. "
+                f"{rest_hint_for_status(e.code)}",
+                status_code=e.code,
+            )
+            last_error.__cause__ = e
+            # Retry once for transient gateway errors on read-only requests.
+            if e.code in TRANSIENT_STATUS_CODES and attempt + 1 < attempts:
+                time.sleep(2)
+                continue
+            raise last_error
+        except (urllib.error.URLError, socket.timeout, TimeoutError, OSError) as e:
+            last_error = VksApiError(
+                f"REST {method} {path} failed: cannot reach {host}: {e}. "
+                "Check network connectivity and that vCenter is up — run "
+                "'vmware-vks check' to diagnose.",
+            )
+            last_error.__cause__ = e
+            if attempt + 1 < attempts:
+                time.sleep(2)
+                continue
+            raise last_error
+    raise last_error  # pragma: no cover — loop always returns or raises
 
 
 def _rest_get(si: ServiceInstance, path: str) -> Any:

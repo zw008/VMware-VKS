@@ -54,9 +54,11 @@ def test_list_tkc_clusters_empty():
 
 
 def test_delete_tkc_cluster_requires_confirmed():
+    # dry_run=False + confirmed=False must be refused (workload guard clean).
     si = MagicMock()
-    with pytest.raises(ValueError, match="confirmed=True"):
-        delete_tkc_cluster(si, "my-cluster", "dev", confirmed=False)
+    with patch("vmware_vks.ops.tkc._check_running_workloads", return_value=[]):
+        with pytest.raises(ValueError, match="confirmed=True"):
+            delete_tkc_cluster(si, "my-cluster", "dev", confirmed=False, dry_run=False)
 
 
 def test_delete_tkc_cluster_dry_run():

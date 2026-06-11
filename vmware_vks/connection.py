@@ -8,7 +8,7 @@ import atexit
 import ssl
 from typing import TYPE_CHECKING
 
-from pyVmomi import vmodl
+from pyVmomi import vim
 from vmware_vks.config import AppConfig, TargetConfig, load_config
 
 if TYPE_CHECKING:
@@ -22,6 +22,23 @@ if TYPE_CHECKING:
 # 踩坑 #32 (2026-05-19, 客户 vCenter 8.0U3 现场).
 _SI_VERIFY_SSL: dict[int, bool] = {}
 
+# Same side-store pattern for the full TargetConfig — needed by wcp_login to
+# re-authenticate against POST /wcp/login (Supervisor bearer-token flow).
+_SI_TARGET: dict[int, TargetConfig] = {}
+
+
+def _evict_si_metadata(si: "ServiceInstance") -> None:
+    """Drop all id(si)-keyed side-store entries for ``si``.
+
+    Must be called whenever a connection is evicted, not just at atexit: once
+    the old si is garbage-collected, a new si for a different target can reuse
+    the same id() value and read stale metadata. .pop(..., None) is safe if the
+    key is already absent. Keep this in sync with every id(si)-keyed dict above.
+    """
+    key = id(si)
+    _SI_VERIFY_SSL.pop(key, None)
+    _SI_TARGET.pop(key, None)
+
 
 def get_verify_ssl(si: "ServiceInstance") -> bool:
     """Return verify_ssl flag stashed by the connect() that created ``si``.
@@ -29,6 +46,16 @@ def get_verify_ssl(si: "ServiceInstance") -> bool:
     Defaults to True (strict) if the SI was created outside this manager.
     """
     return _SI_VERIFY_SSL.get(id(si), True)
+
+
+def get_target_config(si: "ServiceInstance") -> TargetConfig | None:
+    """Return the TargetConfig stashed by the connect() that created ``si``.
+
+    Returns None if the SI was created outside this manager (e.g. raw
+    SmartConnect in tests). Used by wcp_login.get_wcp_token to obtain
+    host/username/password for the Supervisor /wcp/login flow.
+    """
+    return _SI_TARGET.get(id(si))
 
 
 class ConnectionManager:
@@ -54,7 +81,12 @@ class ConnectionManager:
             try:
                 _ = si.content.sessionManager.currentSession
                 return si
-            except (vmodl.fault.NotAuthenticated, Exception):
+            except (vim.fault.NotAuthenticated, Exception):
+                # Evict stale session. Pop the id(si)-keyed side stores NOW
+                # rather than waiting for atexit: once the old si is GC'd, a
+                # new si for a DIFFERENT target can reuse the same id() value
+                # and read stale verify_ssl/target metadata (id-reuse hazard).
+                _evict_si_metadata(si)
                 del self._connections[target.name]
         si = self._create_connection(target)
         self._connections[target.name] = si
@@ -85,9 +117,10 @@ class ConnectionManager:
         # setattr on ManagedObject, see 踩坑 #32). Consumers read via
         # get_verify_ssl(si).
         _SI_VERIFY_SSL[id(si)] = target.verify_ssl
+        _SI_TARGET[id(si)] = target
 
         def _cleanup(_si: "ServiceInstance" = si) -> None:
-            _SI_VERIFY_SSL.pop(id(_si), None)
+            _evict_si_metadata(_si)
             try:
                 Disconnect(_si)
             except Exception:

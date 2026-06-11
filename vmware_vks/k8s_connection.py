@@ -13,16 +13,16 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger("vmware-vks.k8s_connection")
 
-
-def _vcenter_host(si: ServiceInstance) -> str:
-    return si._stub.host.split(":")[0]
+# NOTE: the vCenter-host helper lives in ops/supervisor._vcenter_host — the
+# duplicate that used to live here was dead code and has been removed.
 
 
 def _build_supervisor_kubeconfig(si: ServiceInstance, namespace: str) -> dict[str, Any]:
     """Build kubeconfig as a dict for the Supervisor API endpoint.
 
-    Uses the vCenter session token as bearer token and queries the
-    namespace-management API for the cluster API endpoint.
+    Uses the Supervisor JWT from POST /wcp/login as the bearer token (the
+    pyVmomi SOAP session key is NOT a valid K8s token — see wcp_login) and
+    queries the namespace-management API for the cluster API endpoint.
     """
     from vmware_vks.ops.supervisor import _rest_get
 
@@ -44,7 +44,9 @@ def _build_supervisor_kubeconfig(si: ServiceInstance, namespace: str) -> dict[st
             "Ensure Workload Management is enabled."
         ) from e
 
-    token = si.content.sessionManager.currentSession.key
+    from vmware_vks.wcp_login import get_wcp_token
+
+    token = get_wcp_token(si)
 
     # Honour the verify_ssl flag stashed by the connection manager. When True,
     # the kubernetes client validates the Supervisor cert against the system CA
@@ -75,6 +77,29 @@ def _build_supervisor_kubeconfig(si: ServiceInstance, namespace: str) -> dict[st
         }],
         "current-context": "supervisor-context",
     }
+
+
+def translate_k8s_error(
+    si: ServiceInstance,
+    exc: Exception,
+    resource: str = "",
+    namespace: str = "",
+    kind: str = "TKC",
+):
+    """Translate a kubernetes ApiException into a teaching VksApiError.
+
+    Also invalidates the cached /wcp/login token on 401 so the next call
+    re-authenticates instead of replaying an expired JWT.
+    """
+    from vmware_vks.errors import translate_k8s_api_exception
+
+    if getattr(exc, "status", None) == 401:
+        from vmware_vks.wcp_login import invalidate_wcp_token_for_si
+
+        invalidate_wcp_token_for_si(si)
+    return translate_k8s_api_exception(
+        exc, resource=resource, namespace=namespace, kind=kind
+    )
 
 
 def get_supervisor_kubeconfig_str(si: ServiceInstance, namespace: str) -> str:

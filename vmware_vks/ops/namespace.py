@@ -19,13 +19,22 @@ _log = logging.getLogger("vmware-vks.ops.namespace")
 
 
 def _list_tkc_in_namespace(si: ServiceInstance, namespace: str) -> list[str]:
-    """Return TKC cluster names in namespace. Used as delete guard."""
+    """Return TKC cluster names in namespace. Used as delete guard.
+
+    Fails CLOSED: if the TKC list cannot be retrieved, raise instead of
+    returning [] — otherwise an API outage would silently let the delete
+    guard pass and orphan running clusters (mirrors tkc workload guard).
+    """
+    from vmware_vks.ops.tkc import list_tkc_clusters
     try:
-        from vmware_vks.ops.tkc import list_tkc_clusters
         result = list_tkc_clusters(si, namespace=namespace)
-        return [c["name"] for c in result.get("clusters", [])]
-    except Exception:
-        return []
+    except Exception as e:
+        _log.warning("Could not verify TKC clusters in '%s': %s", namespace, e)
+        raise RuntimeError(
+            f"Cannot verify TKC clusters in '{namespace}': {e}. "
+            "Resolve connectivity or delete clusters manually first."
+        ) from e
+    return [c["name"] for c in result.get("clusters", [])]
 
 
 def list_namespaces(si: ServiceInstance) -> list[dict]:
@@ -111,12 +120,8 @@ def delete_namespace(
     """Delete a vSphere Namespace.
 
     Guards: confirmed=True required; rejects if TKC clusters exist.
+    dry_run is evaluated BEFORE confirmed — a preview never needs confirmation.
     """
-    if not confirmed:
-        raise ValueError(
-            f"confirmed=True required to delete namespace '{name}'."
-        )
-
     tkc_clusters = _list_tkc_in_namespace(si, name)
     if tkc_clusters:
         raise RuntimeError(
@@ -132,6 +137,11 @@ def delete_namespace(
             "namespace": name,
             "warning": "This will permanently delete the namespace.",
         }
+
+    if not confirmed:
+        raise ValueError(
+            f"confirmed=True required to delete namespace '{name}'."
+        )
 
     _rest_delete(si, f"/vcenter/namespaces/instances/{name}")
     return {"namespace": name, "status": "deleted"}
