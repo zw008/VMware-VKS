@@ -1,3 +1,13 @@
+## v1.5.38 (2026-06-12) — backlog finish: one-command Supervisor auth preflight
+
+### Added
+- **`vmware-vks preflight-auth [--target <name>]`** — runs the real `POST /wcp/login` flow against the
+  configured Supervisor and reports, per target: vCenter reachable → `/wcp/login` HTTP status →
+  parseable `session_id` → does the JWT authenticate a trivial Supervisor K8s API call. Makes the
+  v1.5.36 auth rewrite validatable in one command (it never tracebacks; failures are teaching status). (#13)
+- Tightened wcp_login unit tests (exact endpoint/field/verify_ssl pins) so future Supervisor-version
+  drift is caught.
+
 ## v1.5.37 (2026-06-12) — backlog: fewer Supervisor round-trips
 
 ### Fixed

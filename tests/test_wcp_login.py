@@ -86,6 +86,63 @@ def test_wcp_login_401_raises_teaching_error_and_invalidates():
     assert ("vc.example.com", "admin") not in wcp_login._token_cache
 
 
+def test_wcp_login_404_raises_teaching_error_and_invalidates():
+    # 404 on /wcp/login is the headline issue-#13 unknown: the endpoint path
+    # may differ on some Supervisor versions. A 404 must surface a teaching
+    # error (not the generic 401/403 wording) and drop any cached token.
+    err = urllib.error.HTTPError(
+        "https://vc/wcp/login", 404, "Not Found", None, io.BytesIO(b"")
+    )
+    wcp_login._token_cache[("vc.example.com", "admin")] = ("stale", 0.0)
+    with patch("urllib.request.urlopen", side_effect=err):
+        with pytest.raises(VksApiError) as exc_info:
+            wcp_login.wcp_login("vc.example.com", "admin", "pw")
+    msg = str(exc_info.value)
+    assert "Supervisor login failed (HTTP 404)" in msg
+    assert "https://vc.example.com/wcp/login" in msg
+    assert exc_info.value.status_code == 404
+    assert ("vc.example.com", "admin") not in wcp_login._token_cache
+
+
+def test_wcp_login_timeout_raises_teaching_error():
+    with patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+        with pytest.raises(VksApiError) as exc_info:
+            wcp_login.wcp_login("vc.example.com", "admin", "pw")
+    msg = str(exc_info.value)
+    assert "reachable" in msg
+    assert "https://vc.example.com/wcp/login" in msg
+
+
+def test_wcp_login_403_raises_teaching_error():
+    err = urllib.error.HTTPError(
+        "https://vc/wcp/login", 403, "Forbidden", None, io.BytesIO(b"")
+    )
+    with patch("urllib.request.urlopen", side_effect=err):
+        with pytest.raises(VksApiError) as exc_info:
+            wcp_login.wcp_login("vc.example.com", "admin", "pw")
+    assert "HTTP 403" in str(exc_info.value)
+    assert "Workload Management permissions" in str(exc_info.value)
+    assert exc_info.value.status_code == 403
+
+
+def test_wcp_login_targets_exact_endpoint_path():
+    # Pin the URL so any future endpoint drift (path/scheme) fails a unit test.
+    with patch("urllib.request.urlopen") as mock_open:
+        mock_open.return_value = _mock_response({"session_id": "jwt"})
+        wcp_login.wcp_login("vc.example.com:443", "admin", "pw")
+    req = mock_open.call_args[0][0]
+    assert req.full_url == "https://vc.example.com:443/wcp/login"
+    assert req.data == b""  # POST with empty body, auth carried in header
+
+
+def test_wcp_login_empty_session_id_raises():
+    # An empty-string session_id is as broken as a missing one.
+    with patch("urllib.request.urlopen") as mock_open:
+        mock_open.return_value = _mock_response({"session_id": ""})
+        with pytest.raises(VksApiError, match="session_id"):
+            wcp_login.wcp_login("vc.example.com", "admin", "pw")
+
+
 def test_wcp_login_unreachable_raises_teaching_error():
     with patch(
         "urllib.request.urlopen",

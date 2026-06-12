@@ -185,6 +185,7 @@ All accept optional `target` parameter to specify a named vCenter.
 ```bash
 # Supervisor
 vmware-vks check [--target <name>]
+vmware-vks preflight-auth [--target <name>]   # live-validate POST /wcp/login (issue #13)
 vmware-vks supervisor status <cluster-id> [--target <name>]
 vmware-vks supervisor storage-policies [--target <name>]
 
@@ -226,6 +227,16 @@ List policies first: `vmware-vks supervisor storage-policies`, then pass the **P
 ### TKC cluster stuck in "Creating" phase
 
 Check Supervisor events in vCenter. Common causes: insufficient resources on ESXi hosts, network issues with NSX-T, or storage policy not available on target datastore.
+
+### Validating Supervisor auth (POST /wcp/login)
+
+Supervisor/TKC Kubernetes auth uses a JWT obtained from `POST https://<vcenter>/wcp/login` (HTTP Basic → JSON `session_id` bearer token), not the pyVmomi SOAP session key. To validate this end-to-end against your real Supervisor, run:
+
+```bash
+vmware-vks preflight-auth [--target <name>]
+```
+
+It performs the **real** login (no mocks) and reports, per target: vCenter reachable → `/wcp/login` HTTP status → parseable `session_id` → does the JWT authenticate a trivial Supervisor K8s API call. A healthy result is all four steps `✓ PASS` ending in `target '<name>': /wcp/login auth flow validated end-to-end.` (exit code 0). On failure each step prints a teaching message — e.g. a 404 on `/wcp/login` means the endpoint path differs on your Supervisor version (capture the real path), a 401 on the K8s probe means `session_id` is not the bearer token on your version. It never tracebacks — every failure is status output.
 
 ### Kubeconfig retrieval fails
 

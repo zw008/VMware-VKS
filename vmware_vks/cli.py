@@ -118,6 +118,56 @@ def cmd_check(
     raise typer.Exit(0 if ok else 1)
 
 
+@app.command("preflight-auth")
+@_cli_errors
+def cmd_preflight_auth(
+    target: Optional[str] = typer.Option(
+        None, "-t", "--target", help="Target name (default: all configured targets)"
+    ),
+):
+    """Live-validate the Supervisor POST /wcp/login bearer-token flow (issue #13).
+
+    Runs the REAL login against the configured Supervisor (not a mock) and
+    reports, per target: vCenter reachable? /wcp/login HTTP status? parseable
+    'session_id'? does the JWT authenticate a trivial Supervisor K8s API call?
+    Each failure prints a teaching message. Exit code is non-zero if any step
+    fails — run this in your environment to close out issue #13.
+    """
+    from vmware_vks.preflight_auth import run_preflight_auth
+
+    if target:
+        names: list[Optional[str]] = [target]
+    else:
+        from vmware_vks.config import load_config
+        config_path = os.environ.get("VMWARE_VKS_CONFIG")
+        config = load_config(Path(config_path) if config_path else None)
+        names = [t.name for t in config.targets] or [None]
+
+    all_passed = True
+    for name in names:
+        result = run_preflight_auth(name)
+        table = Table(
+            title=f"Supervisor /wcp/login preflight — target '{result.target}'",
+            show_header=True,
+        )
+        table.add_column("Step", style="bold")
+        table.add_column("Status")
+        table.add_column("Detail", overflow="fold")
+        for step in result.steps:
+            status = "[green]✓ PASS[/green]" if step.ok else "[red]✗ FAIL[/red]"
+            table.add_row(step.name, status, step.detail)
+        console.print(table)
+        if result.passed:
+            console.print(
+                f"[green]✓ target '{result.target}': /wcp/login auth flow "
+                "validated end-to-end.[/green]"
+            )
+        else:
+            all_passed = False
+
+    raise typer.Exit(0 if all_passed else 1)
+
+
 @supervisor_app.command("status")
 @_cli_errors
 def supervisor_status(
