@@ -1,3 +1,9 @@
+## v1.5.37 (2026-06-12) — backlog: fewer Supervisor round-trips
+
+### Fixed
+- TKC operations resolve the Supervisor endpoint once (cached per host) instead of re-running two vCenter
+  REST calls per Kubernetes-client build. (#12)
+
 ## v1.5.36 (2026-06-12) — correct Supervisor authentication + safety fixes
 
 ### Fixed

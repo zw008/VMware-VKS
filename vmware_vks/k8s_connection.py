@@ -16,14 +16,35 @@ _log = logging.getLogger("vmware-vks.k8s_connection")
 # NOTE: the vCenter-host helper lives in ops/supervisor._vcenter_host — the
 # duplicate that used to live here was dead code and has been removed.
 
+# Per-host cache of the resolved Supervisor API endpoint. Each TKC op builds
+# the kubeconfig at least twice (version probe + CustomObjectsApi), and each
+# build otherwise re-runs two vCenter REST round-trips (cluster list + detail).
+# Endpoint is keyed by vCenter host so the per-(host,user) token flow and the
+# version cache in ops/tkc stay aligned. Cleared by invalidate_endpoint_for_si.
+_endpoint_cache: dict[str, str] = {}
 
-def _build_supervisor_kubeconfig(si: ServiceInstance, namespace: str) -> dict[str, Any]:
-    """Build kubeconfig as a dict for the Supervisor API endpoint.
 
-    Uses the Supervisor JWT from POST /wcp/login as the bearer token (the
-    pyVmomi SOAP session key is NOT a valid K8s token — see wcp_login) and
-    queries the namespace-management API for the cluster API endpoint.
+def _si_host(si: ServiceInstance) -> str:
+    """vCenter host key for the endpoint cache (matches tkc._version_cache key)."""
+    return getattr(getattr(si, "_stub", None), "host", "default")
+
+
+def invalidate_endpoint_for_si(si: ServiceInstance) -> None:
+    """Drop the cached Supervisor endpoint for this connection's host."""
+    _endpoint_cache.pop(_si_host(si), None)
+
+
+def _resolve_supervisor_endpoint(si: ServiceInstance) -> str:
+    """Resolve (and cache per host) the Supervisor API endpoint.
+
+    Runs the two vCenter REST round-trips (cluster list + cluster detail) only
+    on a cache miss; subsequent kubeconfig builds for the same host reuse it.
     """
+    host = _si_host(si)
+    cached = _endpoint_cache.get(host)
+    if cached:
+        return cached
+
     from vmware_vks.ops.supervisor import _rest_get
 
     try:
@@ -43,6 +64,19 @@ def _build_supervisor_kubeconfig(si: ServiceInstance, namespace: str) -> dict[st
             f"Could not retrieve Supervisor API endpoint: {e}. "
             "Ensure Workload Management is enabled."
         ) from e
+
+    _endpoint_cache[host] = api_endpoint
+    return api_endpoint
+
+
+def _build_supervisor_kubeconfig(si: ServiceInstance, namespace: str) -> dict[str, Any]:
+    """Build kubeconfig as a dict for the Supervisor API endpoint.
+
+    Uses the Supervisor JWT from POST /wcp/login as the bearer token (the
+    pyVmomi SOAP session key is NOT a valid K8s token — see wcp_login) and
+    reuses the per-host-cached cluster API endpoint.
+    """
+    api_endpoint = _resolve_supervisor_endpoint(si)
 
     from vmware_vks.wcp_login import get_wcp_token
 

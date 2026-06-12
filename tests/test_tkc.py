@@ -74,3 +74,63 @@ def test_delete_tkc_cluster_rejects_with_workloads():
     with patch("vmware_vks.ops.tkc._check_running_workloads", return_value=workloads):
         with pytest.raises(RuntimeError, match="Deployment/app"):
             delete_tkc_cluster(si, "my-cluster", "dev", confirmed=True, dry_run=False, force=False)
+
+
+def test_tkc_op_resolves_supervisor_endpoint_once(monkeypatch):
+    """A single TKC op (version probe + CustomObjectsApi build = 2 client builds)
+    must hit the vCenter cluster-discovery REST round-trips only ONCE, via the
+    per-host endpoint cache (issue #12)."""
+    import vmware_vks.k8s_connection as k8sc
+    from vmware_vks.ops import tkc
+
+    # Isolate per-host caches so prior tests / ordering can't poison this one.
+    k8sc._endpoint_cache.clear()
+    tkc._version_cache.clear()
+
+    rest_calls: list[str] = []
+
+    def fake_rest_get(si, path):
+        rest_calls.append(path)
+        if path.endswith("/clusters"):
+            return [{"cluster": "domain-c1", "config_status": "RUNNING"}]
+        return {"api_server_cluster_endpoint": "10.0.0.1:6443"}
+
+    monkeypatch.setattr("vmware_vks.ops.supervisor._rest_get", fake_rest_get)
+    monkeypatch.setattr("vmware_vks.wcp_login.get_wcp_token", lambda si: "jwt-token")
+    monkeypatch.setattr("vmware_vks.connection.get_verify_ssl", lambda si: False)
+
+    # Count kubernetes client builds and stub discovery to land on v1beta1.
+    build_count = {"n": 0}
+    real_load = MagicMock()
+
+    fake_k8s = MagicMock()
+    fake_k8s.config.load_kube_config_from_dict = real_load
+
+    def fake_api_client(*a, **k):
+        build_count["n"] += 1
+        return MagicMock()
+
+    fake_k8s.client.ApiClient.side_effect = fake_api_client
+    fake_group = MagicMock()
+    fake_group.name = "cluster.x-k8s.io"
+    fake_ver = MagicMock()
+    fake_ver.version = "v1beta1"
+    fake_group.versions = [fake_ver]
+    fake_k8s.client.ApisApi.return_value.get_api_versions.return_value.groups = [fake_group]
+
+    si = MagicMock()
+    si._stub.host = "vc.example.com"
+    mock_api = fake_k8s.client.CustomObjectsApi.return_value
+    mock_api.list_namespaced_custom_object.return_value = {"items": []}
+
+    with patch.dict("sys.modules", {"kubernetes": fake_k8s}):
+        result = tkc.list_tkc_clusters(si, namespace="dev")
+
+    assert result["total"] == 0
+    # Two client builds (version probe + CustomObjectsApi)...
+    assert build_count["n"] == 2
+    # ...but the two cluster-discovery REST calls ran only once total.
+    assert rest_calls == [
+        "/vcenter/namespace-management/clusters",
+        "/vcenter/namespace-management/clusters/domain-c1",
+    ]
