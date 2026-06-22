@@ -1,3 +1,13 @@
+## v1.6.0 (2026-06-22) — trust architecture: undo tokens
+
+### Added
+- **Undo-token recording** (vmware-policy 1.6.0): `create_namespace`→`delete_namespace`,
+  `create_tkc_cluster`→`delete_tkc_cluster`.
+- Inherits harness budget guard, audit accountability fields, and graduated risk tiers.
+
+### Changed
+- Requires **vmware-policy >= 1.6.0**.
+
 ## v1.5.39 (2026-06-22) — family version alignment
 
 No code changes. Version bump to stay aligned with the v1.5.39 family release

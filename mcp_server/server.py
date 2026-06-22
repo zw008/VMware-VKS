@@ -190,7 +190,20 @@ def get_namespace(name: str, target: Optional[str] = None) -> dict:
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
-@vmware_tool(risk_level="medium")
+@vmware_tool(
+    risk_level="medium",
+    undo=lambda params, result: {
+        "tool": "delete_namespace",
+        "params": {
+            "name": params.get("name"),
+            "target": params.get("target"),
+            "confirmed": True,
+            "dry_run": False,
+        },
+        "skill": "vks",
+        "note": "Inverse of create_namespace: delete the namespace.",
+    },
+)
 def create_namespace(
     name: str,
     cluster_id: str,
@@ -409,7 +422,21 @@ def get_tkc_available_versions(namespace: str, target: Optional[str] = None) -> 
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
-@vmware_tool(risk_level="medium")
+@vmware_tool(
+    risk_level="medium",
+    undo=lambda params, result: {
+        "tool": "delete_tkc_cluster",
+        "params": {
+            "name": params.get("name"),
+            "namespace": params.get("namespace"),
+            "target": params.get("target"),
+            "confirmed": True,
+            "dry_run": False,
+        },
+        "skill": "vks",
+        "note": "Inverse of create_tkc_cluster: delete the TKC cluster.",
+    },
+)
 def create_tkc_cluster(
     name: str,
     namespace: str,
