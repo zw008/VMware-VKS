@@ -1,3 +1,8 @@
+## v1.5.39 (2026-06-22) — family version alignment
+
+No code changes. Version bump to stay aligned with the v1.5.39 family release
+(AIops snapshot-delete async + honest-timeout token-burn fix; Storage datastore-browse timeout fix).
+
 ## v1.5.38 (2026-06-12) — backlog finish: one-command Supervisor auth preflight
 
 ### Added
