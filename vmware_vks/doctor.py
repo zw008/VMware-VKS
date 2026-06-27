@@ -1,4 +1,5 @@
 """Pre-flight diagnostics for vmware-vks."""
+
 from __future__ import annotations
 
 import logging
@@ -22,7 +23,14 @@ def run_doctor(config_path: Path | None = None) -> bool:
     if path.exists():
         checks.append(("Config file", True, str(path)))
     else:
-        checks.append(("Config file", False, f"Not found: {path}. Copy config.example.yaml"))
+        checks.append(
+            (
+                "Config file",
+                False,
+                f"Not found: {path}. Run 'vmware-vks init' "
+                "(or copy config.example.yaml by hand).",
+            )
+        )
 
     # 2. Load config
     config = None
@@ -39,13 +47,21 @@ def run_doctor(config_path: Path | None = None) -> bool:
                 _ = t.password
                 checks.append((f"Password ({t.name})", True, "Set"))
             except OSError as e:
-                checks.append((f"Password ({t.name})", False, str(e)))
+                checks.append(
+                    (
+                        f"Password ({t.name})",
+                        False,
+                        f"{e} Run 'vmware-vks init' to set it (or add it to "
+                        "~/.vmware-vks/.env by hand).",
+                    )
+                )
 
     # 4. vCenter reachable + version + WCP
     if config:
         for t in config.targets:
             try:
                 from vmware_vks.connection import ConnectionManager
+
                 mgr = ConnectionManager(config)
                 si = mgr.connect(t.name)
                 version = si.content.about.version
@@ -53,17 +69,38 @@ def run_doctor(config_path: Path | None = None) -> bool:
 
                 parts = tuple(int(x) for x in version.split(".")[:2])
                 if parts >= (8, 0):
-                    checks.append((f"vCenter version ({t.name})", True, f"{version} >= 8.0 ✓"))
+                    checks.append(
+                        (f"vCenter version ({t.name})", True, f"{version} >= 8.0 ✓")
+                    )
                 else:
-                    checks.append((f"vCenter version ({t.name})", False, f"{version} < 8.0 (requires 8.x+)"))
+                    checks.append(
+                        (
+                            f"vCenter version ({t.name})",
+                            False,
+                            f"{version} < 8.0 (requires 8.x+)",
+                        )
+                    )
 
                 from vmware_vks.ops.supervisor import _rest_get
+
                 clusters = _rest_get(si, "/vcenter/namespace-management/clusters")
                 running = [c for c in clusters if c.get("config_status") == "RUNNING"]
                 if running:
-                    checks.append((f"WCP enabled ({t.name})", True, f"{len(running)} cluster(s) running"))
+                    checks.append(
+                        (
+                            f"WCP enabled ({t.name})",
+                            True,
+                            f"{len(running)} cluster(s) running",
+                        )
+                    )
                 else:
-                    checks.append((f"WCP enabled ({t.name})", False, "No running Supervisor. Enable Workload Management in vCenter UI."))
+                    checks.append(
+                        (
+                            f"WCP enabled ({t.name})",
+                            False,
+                            "No running Supervisor. Enable Workload Management in vCenter UI.",
+                        )
+                    )
             except Exception as e:
                 checks.append((f"vCenter reachable ({t.name})", False, str(e)))
 
