@@ -41,6 +41,10 @@ _TKC_PLURAL = "clusters"
 # from re-probing the discovery API on every TKC operation.
 _version_cache: dict[str, str] = {}
 
+# Page size for all-namespace list calls. Chunks huge fleets over multiple
+# round-trips (limit/continue) instead of landing everything in one response.
+_LIST_PAGE_LIMIT = 500
+
 
 def _get_custom_objects_api(si: ServiceInstance, namespace: str):
     """Get kubernetes CustomObjectsApi connected to Supervisor namespace."""
@@ -48,6 +52,41 @@ def _get_custom_objects_api(si: ServiceInstance, namespace: str):
     from vmware_vks.k8s_connection import get_k8s_client
     api_client = get_k8s_client(si, namespace)
     return k8s.client.CustomObjectsApi(api_client)
+
+
+def _list_all_custom(list_call) -> list:
+    """Collect all items from a paginated custom-object list call.
+
+    ``list_call(limit, _continue)`` returns the raw dict response
+    (``{"items": [...], "metadata": {"continue": ...}}``). Walks the
+    continue token so a very large collection is fetched in bounded chunks.
+    """
+    items: list = []
+    cont: str | None = None
+    while True:
+        raw = list_call(limit=_LIST_PAGE_LIMIT, _continue=cont)
+        items.extend(raw.get("items", []))
+        cont = (raw.get("metadata") or {}).get("continue")
+        if not cont:
+            break
+    return items
+
+
+def _list_all_typed(list_call) -> list:
+    """Collect all ``.items`` from a paginated typed kubernetes list call.
+
+    ``list_call(limit, _continue)`` returns a typed list object (e.g.
+    ``V1DeploymentList``) with ``.items`` and ``.metadata._continue``.
+    """
+    items: list = []
+    cont: str | None = None
+    while True:
+        page = list_call(limit=_LIST_PAGE_LIMIT, _continue=cont)
+        items.extend(page.items)
+        cont = getattr(page.metadata, "_continue", None) if page.metadata else None
+        if not cont:
+            break
+    return items
 
 
 def _resolve_tkc_version(si: ServiceInstance, namespace: str) -> str:
@@ -155,17 +194,20 @@ def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict
     try:
         try:
             if namespace:
-                raw = api.list_namespaced_custom_object(
-                    group=_TKC_GROUP, version=version,
-                    namespace=namespace, plural=_TKC_PLURAL,
+                items = _list_all_custom(
+                    lambda **kw: api.list_namespaced_custom_object(
+                        group=_TKC_GROUP, version=version,
+                        namespace=namespace, plural=_TKC_PLURAL, **kw,
+                    )
                 )
             else:
-                raw = api.list_cluster_custom_object(
-                    group=_TKC_GROUP, version=version, plural=_TKC_PLURAL,
+                items = _list_all_custom(
+                    lambda **kw: api.list_cluster_custom_object(
+                        group=_TKC_GROUP, version=version, plural=_TKC_PLURAL, **kw,
+                    )
                 )
         except k8s.client.exceptions.ApiException as e:
             raise _translate_api_exception(si, e, resource="(list)", namespace=ns) from e
-        items = raw.get("items", [])
         clusters = [
             {
                 "name": sanitize(item["metadata"]["name"]),
@@ -430,21 +472,21 @@ def _check_running_workloads(si: ServiceInstance, name: str, namespace: str) -> 
         try:
             apps_api = k8s.client.AppsV1Api(api_client)
             workloads = []
-            for deploy in apps_api.list_deployment_for_all_namespaces().items:
+            for deploy in _list_all_typed(apps_api.list_deployment_for_all_namespaces):
                 if deploy.status.ready_replicas and deploy.status.ready_replicas > 0:
                     workloads.append({
                         "kind": "Deployment",
                         "name": deploy.metadata.name,
                         "namespace": deploy.metadata.namespace,
                     })
-            for ss in apps_api.list_stateful_set_for_all_namespaces().items:
+            for ss in _list_all_typed(apps_api.list_stateful_set_for_all_namespaces):
                 if ss.status.ready_replicas and ss.status.ready_replicas > 0:
                     workloads.append({
                         "kind": "StatefulSet",
                         "name": ss.metadata.name,
                         "namespace": ss.metadata.namespace,
                     })
-            for ds in apps_api.list_daemon_set_for_all_namespaces().items:
+            for ds in _list_all_typed(apps_api.list_daemon_set_for_all_namespaces):
                 if ds.status and ds.status.number_ready and ds.status.number_ready > 0:
                     workloads.append({
                         "kind": "DaemonSet",

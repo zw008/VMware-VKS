@@ -1,3 +1,11 @@
+## v1.7.2 (2026-07-02) — list hardening
+
+### Fixed
+- **Graceful listing at scale.** Harbor registry info now degrades gracefully
+  (a warning, not an aborted listing) if a per-registry detail call fails, and
+  TKC cluster / workload listings page via `limit` + continuation tokens so very
+  large fleets don't land in one response. Output shape unchanged.
+
 ## v1.7.1 (2026-07-02) — family version alignment
 
 No code changes. Version bump to stay aligned with the v1.7.1 family release

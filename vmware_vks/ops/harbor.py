@@ -1,5 +1,7 @@
 """Harbor registry info (read-only)."""
 from __future__ import annotations
+
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -8,6 +10,8 @@ if TYPE_CHECKING:
 from vmware_policy import sanitize
 
 from vmware_vks.ops.supervisor import _rest_get
+
+_log = logging.getLogger("vmware-vks.ops.harbor")
 
 
 def _enrich_registry(si: ServiceInstance, registry_id: str | None) -> dict:
@@ -32,7 +36,10 @@ def _enrich_registry(si: ServiceInstance, registry_id: str | None) -> dict:
             if storage
             else None,
         }
-    except Exception:
+    except Exception as e:
+        # A per-registry detail failure must never abort the whole listing —
+        # the Summary fields stay reported with status/storage_used_mb=None.
+        _log.warning("Harbor detail enrichment failed for '%s': %s", registry_id, e)
         return {}
 
 
@@ -50,6 +57,11 @@ def get_harbor_info(si: ServiceInstance) -> dict:
         summaries = data if isinstance(data, list) else [data]
         registries = []
         for r in summaries:
+            # Isolate each entry so one malformed/failing registry (in the
+            # rare >1 case) doesn't abort the whole listing.
+            if not isinstance(r, dict):
+                _log.warning("Skipping non-dict Harbor summary entry: %r", r)
+                continue
             base = {
                 "id": r.get("registry"),
                 "cluster": r.get("cluster"),
