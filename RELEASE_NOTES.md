@@ -1,3 +1,9 @@
+## v1.7.1 (2026-07-02) — family version alignment
+
+No code changes. Version bump to stay aligned with the v1.7.1 family release
+(VMware-AIops + VMware-Monitor large-inventory scale fix — PropertyCollector
+batching to stop per-object lazy SOAP round-trips, GitHub issue #31).
+
 ## v1.7.0 (2026-06-27) — guided onboarding + teaching auth errors
 
 ### Added
