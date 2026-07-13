@@ -1,3 +1,7 @@
+## v1.7.5 (2026-07-13) — family version alignment (no code change)
+
+Version-alignment release only; no functional change since v1.7.4.
+
 ## v1.7.4 (2026-07-13) — family version alignment
 
 ## v1.7.3 (2026-07-03) — family version alignment
