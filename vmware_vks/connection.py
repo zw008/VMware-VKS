@@ -8,7 +8,6 @@ import atexit
 import ssl
 from typing import TYPE_CHECKING
 
-from pyVmomi import vim
 from vmware_vks.config import AppConfig, TargetConfig, load_config
 
 if TYPE_CHECKING:
@@ -79,15 +78,21 @@ class ConnectionManager:
         if target.name in self._connections:
             si = self._connections[target.name]
             try:
-                _ = si.content.sessionManager.currentSession
+                # Probe liveness; expired tokens can surface as a None
+                # currentSession instead of raising.
+                alive = si.content.sessionManager.currentSession is not None
+            except Exception:
+                # Any failure (NotAuthenticated, socket error, …) means the
+                # cached session is unusable — drop it and reconnect below.
+                alive = False
+            if alive:
                 return si
-            except (vim.fault.NotAuthenticated, Exception):
-                # Evict stale session. Pop the id(si)-keyed side stores NOW
-                # rather than waiting for atexit: once the old si is GC'd, a
-                # new si for a DIFFERENT target can reuse the same id() value
-                # and read stale verify_ssl/target metadata (id-reuse hazard).
-                _evict_si_metadata(si)
-                del self._connections[target.name]
+            # Evict stale session. Pop the id(si)-keyed side stores NOW
+            # rather than waiting for atexit: once the old si is GC'd, a
+            # new si for a DIFFERENT target can reuse the same id() value
+            # and read stale verify_ssl/target metadata (id-reuse hazard).
+            _evict_si_metadata(si)
+            del self._connections[target.name]
         si = self._create_connection(target)
         self._connections[target.name] = si
         return si
