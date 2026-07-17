@@ -1,3 +1,24 @@
+## v1.7.7 (2026-07-17) — session-probe None-shape fix + mcp 1.28.1
+
+Family fix pack — no new tools, no schema changes.
+
+### Fixed
+- **A dead cached session could be returned as live** (family fix, external
+  fork report VMware-AIops PR #32). An expired token can make
+  `sessionManager.currentSession` return `None` without raising, and the
+  raise-only liveness probe treated that dead session as alive. The probe now
+  checks `currentSession is not None`; the exception path (already correct
+  here) is unified on the family-standard bare `except Exception`. Three
+  regression tests pin the probe shapes (raise → evict + reconnect, None →
+  evict + reconnect, live → cache reuse).
+
+### Security
+- Lockfile bumps `mcp` to **1.28.1**, clearing three GHSA HIGH advisories
+  against the MCP Python SDK (WebSocket Host/Origin validation, HTTP
+  transport principal verification, experimental task-handler cross-client
+  access). stdio-only servers are not directly exposed, and installs resolve
+  `mcp` fresh from PyPI — this mainly matters for from-source checkouts.
+
 ## v1.7.5 (2026-07-13) — family version alignment (no code change)
 
 Version-alignment release only; no functional change since v1.7.4.
