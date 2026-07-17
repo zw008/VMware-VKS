@@ -1412,7 +1412,7 @@ wheels = [
 
 [[package]]
 name = "vmware-vks"
-version = "1.7.5"
+version = "1.7.7"
 source = { editable = "." }
 dependencies = [
     { name = "kubernetes" },
