@@ -186,6 +186,18 @@ to be guessed from the row count. These three read their collection in one un-pa
 
 > Full capability details and safety features: see `references/capabilities.md`
 
+## Read-Only Mode
+
+If a tool described above is absent from `list_tools()`, this deployment is in read-only
+mode: `VMWARE_READ_ONLY=true` (or `VMWARE_VKS_READ_ONLY`, or `read_only: true` in
+config.yaml) withholds 9 tools at start-up, leaving 11. That is two more than the 7 marked
+Write, because `get_supervisor_kubeconfig` and `get_tkc_kubeconfig` go too — they
+materialise a session-token credential file at a model-supplied local path, an effect their
+`[READ]` marker under-reports. The lockdown is deliberate, not a fault — do not retry, and
+do not look for another tool that achieves the same change. Name the blocked operation and
+say an operator must clear the switch and restart the server. The other read tools are
+unaffected.
+
 ## CLI Quick Reference
 
 ```bash

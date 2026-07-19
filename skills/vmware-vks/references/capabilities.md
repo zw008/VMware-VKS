@@ -17,7 +17,7 @@ Each operation is classified by autonomy level per the Enterprise Harness Engine
 **Notes**:
 - L1/L2 tools are always safe for agents to call without confirmation.
 - L3 tools always pass through the `@vmware_tool` decorator: connection check → policy check → audit log → double-confirm.
-- Kubeconfig retrieval (L1) returns short-lived session tokens; agents should write to file (`-o <path>`) rather than displaying tokens in conversation context. Both kubeconfig tools are read-only against vCenter but materialise a credential file at a model-supplied local path, so read-only mode withholds them alongside the 7 write tools — 9 of 20 removed, 11 surviving.
+- Kubeconfig retrieval (L1) returns short-lived session tokens; agents should write to file (`-o <path>`) rather than displaying tokens in conversation context. Both kubeconfig tools are read-only against vCenter but materialise a credential file at a model-supplied local path, so read-only mode withholds them alongside the 7 write tools — 9 of 20 removed, 11 surviving. Under read-only mode (`VMWARE_READ_ONLY=true`) those 9 never appear in `list_tools()`. Classification follows each tool's `[READ]`/`[WRITE]` docstring marker, with the two kubeconfig tools force-classified as writes; see README.
 
 ## 1. Supervisor Layer (Read-Only)
 
