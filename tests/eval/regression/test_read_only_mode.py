@@ -39,15 +39,15 @@ WITHHELD = WRITE_TOOLS | FORCE_WRITE_TOOLS
 
 
 def _load_server(monkeypatch, read_only: str | None):
-    """Import mcp_server.server fresh under the given read-only env."""
+    """Import vmware_vks.mcp_server.server fresh under the given read-only env."""
     monkeypatch.delenv("VMWARE_READ_ONLY", raising=False)
     monkeypatch.delenv("VMWARE_VKS_READ_ONLY", raising=False)
     if read_only is not None:
         monkeypatch.setenv("VMWARE_READ_ONLY", read_only)
 
-    for name in [m for m in sys.modules if m.startswith("mcp_server")]:
+    for name in [m for m in sys.modules if m.startswith("vmware_vks.mcp_server")]:
         del sys.modules[name]
-    return importlib.import_module("mcp_server.server")
+    return importlib.import_module("vmware_vks.mcp_server.server")
 
 
 def _tool_names(server) -> set[str]:
@@ -58,7 +58,7 @@ def _tool_names(server) -> set[str]:
 def _restore_modules():
     """Leave sys.modules as we found it so other test files import normally."""
     yield
-    for name in [m for m in sys.modules if m.startswith("mcp_server")]:
+    for name in [m for m in sys.modules if m.startswith("vmware_vks.mcp_server")]:
         del sys.modules[name]
 
 
@@ -115,9 +115,9 @@ def test_every_surviving_tool_is_marked_read(monkeypatch):
 def test_skill_env_var_also_works(monkeypatch):
     monkeypatch.delenv("VMWARE_READ_ONLY", raising=False)
     monkeypatch.setenv("VMWARE_VKS_READ_ONLY", "true")
-    for name in [m for m in sys.modules if m.startswith("mcp_server")]:
+    for name in [m for m in sys.modules if m.startswith("vmware_vks.mcp_server")]:
         del sys.modules[name]
-    server = importlib.import_module("mcp_server.server")
+    server = importlib.import_module("vmware_vks.mcp_server.server")
     assert not (WITHHELD & _tool_names(server))
 
 

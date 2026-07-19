@@ -9,7 +9,7 @@ The control was configured and inert.
 Environment is now an explicit declaration in config.yaml. This pins the
 skill's half of that contract end to end: ``TargetConfig`` parses the field,
 ``AppConfig.environment_for`` resolves it (including the first-target default),
-and ``mcp_server.server`` registers that lookup with vmware-policy so the rules
+and ``vmware_vks.mcp_server.server`` registers that lookup with vmware-policy so the rules
 can fire at all.
 
 The rollout is two-step, and both steps are pinned here:
@@ -72,7 +72,7 @@ def _server(tmp_path, monkeypatch, rules: str | None):
     omitted to fall back to vmware-policy's packaged baseline. Redirecting
     ``OPS_HOME`` also keeps audit/undo state out of the developer's ~/.vmware.
     """
-    import mcp_server.server as srv
+    import vmware_vks.mcp_server.server as srv
 
     ops_home = tmp_path / "ops"
     ops_home.mkdir()

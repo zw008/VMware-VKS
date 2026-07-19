@@ -261,7 +261,7 @@ def test_cli_translates_runtime_error_to_exit_1():
 # ---------------------------------------------------------------------------
 
 def test_mcp_scale_returns_error_dict_and_audits():
-    import mcp_server.server as srv
+    import vmware_vks.mcp_server.server as srv
 
     boom = VksApiError("TKC 'c1' not found in namespace 'dev' — run "
                        "list_tkc_clusters to see available clusters.")
@@ -277,7 +277,7 @@ def test_mcp_scale_returns_error_dict_and_audits():
 
 
 def test_mcp_delete_tkc_returns_error_dict():
-    import mcp_server.server as srv
+    import vmware_vks.mcp_server.server as srv
 
     with patch.object(srv, "_get_si", side_effect=VksApiError("boom", 503)):
         result = srv.delete_tkc_cluster("c1", "dev", confirmed=True, dry_run=False)
@@ -285,7 +285,7 @@ def test_mcp_delete_tkc_returns_error_dict():
 
 
 def test_safe_error_passes_vks_api_error_through():
-    import mcp_server.server as srv
+    import vmware_vks.mcp_server.server as srv
 
     msg = srv._safe_error(VksApiError("teaching hint here"), "tool")
     assert "teaching hint here" in msg
@@ -415,7 +415,7 @@ def test_skill_md_tool_counts_match_list_tools():
     import re
     from pathlib import Path
 
-    import mcp_server.server as srv
+    import vmware_vks.mcp_server.server as srv
 
     tools = asyncio.run(srv.mcp.list_tools())
     read = sum(1 for t in tools if t.annotations and t.annotations.readOnlyHint)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import stat
 from pathlib import Path
 
 from rich.console import Console
@@ -16,7 +17,7 @@ console = Console()
 def _config_read_only() -> bool | None:
     """Read ``read_only`` from the config file the MCP server's gate would use.
 
-    Deliberately mirrors ``mcp_server.server._config_read_only`` instead of
+    Deliberately mirrors ``vmware_vks.mcp_server.server._config_read_only`` instead of
     importing it: importing that module applies the gate as a side effect. The
     path comes from ``VMWARE_VKS_CONFIG`` rather than this command's
     ``--config`` argument, because the question doctor answers is what the
@@ -74,6 +75,36 @@ def run_doctor(config_path: Path | None = None) -> bool:
                 "(or copy config.example.yaml by hand).",
             )
         )
+
+    # 1b. .env permissions
+    #
+    # Every other skill's doctor checked this; vmware-vks imported ENV_FILE and
+    # never used it — the fingerprint of a check that was planned and dropped.
+    # It is not decorative: config.py loads this file, so it holds the
+    # per-target passwords, and CLAUDE.md requires it be chmod 600.
+    if not ENV_FILE.exists():
+        checks.append(
+            (
+                ".env file",
+                False,
+                f"Not found: {ENV_FILE} — passwords are read from here. "
+                f"Create it, then: chmod 600 {ENV_FILE}",
+            )
+        )
+    else:
+        mode = ENV_FILE.stat().st_mode
+        if mode & (stat.S_IRWXG | stat.S_IRWXO):
+            checks.append(
+                (
+                    ".env file",
+                    False,
+                    f"Permissions too open ({oct(stat.S_IMODE(mode))}) — "
+                    f"other users on this host can read your passwords. "
+                    f"Run: chmod 600 {ENV_FILE}",
+                )
+            )
+        else:
+            checks.append((".env file", True, f"Found, permissions 600: {ENV_FILE}"))
 
     # 2. Load config
     config = None

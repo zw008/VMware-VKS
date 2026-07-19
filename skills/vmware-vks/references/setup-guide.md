@@ -19,10 +19,18 @@ uv tool install vmware-vks==1.2.3
 
 ### Claude Code
 
+`npx skills add` and `clawhub install` both place the skill in Claude Code's skills
+directory. To install it manually from a clone:
+
+```bash
+mkdir -p ~/.claude/skills/vmware-vks
+cp -r skills/vmware-vks/. ~/.claude/skills/vmware-vks/
 ```
-/plugin marketplace add zw008/VMware-VKS
-/plugin install vmware-ops
-/vmware-ops:vmware-vks
+
+For tool access (not just skill context), register the MCP server:
+
+```bash
+claude mcp add vmware-vks -- vmware-vks mcp
 ```
 
 ### What Gets Installed

@@ -196,7 +196,7 @@ materialise a session-token credential file at a model-supplied local path, an e
 `[READ]` marker under-reports. The lockdown is deliberate, not a fault — do not retry, and
 do not look for another tool that achieves the same change. Name the blocked operation and
 say an operator must clear the switch and restart the server. The other read tools are
-unaffected.
+unaffected. Running with local or small models? See [`references/agent-guardrails.md`](references/agent-guardrails.md).
 
 ## CLI Quick Reference
 
