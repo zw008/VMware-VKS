@@ -27,9 +27,15 @@ from pathlib import Path
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
-from vmware_policy import sanitize, vmware_tool
+from vmware_policy import (
+    apply_read_only_gate,
+    mtime_cached_loader,
+    sanitize,
+    set_environment_resolver,
+    vmware_tool,
+)
 
-from vmware_vks.config import load_config
+from vmware_vks.config import CONFIG_FILE, load_config
 from vmware_vks.connection import ConnectionManager
 from vmware_vks.errors import VksApiError
 from vmware_vks.notify.audit import AuditLogger
@@ -123,14 +129,16 @@ def get_supervisor_status(cluster_id: str, target: Optional[str] = None) -> dict
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def list_supervisor_storage_policies(target: Optional[str] = None) -> list[dict]:
+def list_supervisor_storage_policies(target: Optional[str] = None) -> dict:
     """[READ] List vCenter storage policies (the policies assigned to Supervisor Namespaces).
 
-    Returns a list of {policy (policy ID), name (display name), description}.
-    Returns all policies in one call — no pagination. Read-only, no side
-    effects. Call this before create_namespace or update_namespace to obtain
-    a valid storage_policy value (pass the 'policy' ID). For PVC-level usage
-    inside a namespace, use list_namespace_storage_usage instead.
+    Returns the list envelope: 'items' holds {policy (policy ID), name
+    (display name), description}, and 'returned'/'total'/'truncated' state
+    whether the listing is complete. All policies come back in one call, so
+    truncated is always false. Read-only, no side effects. Call this before
+    create_namespace or update_namespace to obtain a valid storage_policy
+    value (pass the 'policy' ID). For PVC-level usage inside a namespace, use
+    list_namespace_storage_usage instead.
 
     Args:
         target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
@@ -141,7 +149,7 @@ def list_supervisor_storage_policies(target: Optional[str] = None) -> list[dict]
         from vmware_vks.ops import supervisor as _sup
         return _sup.list_supervisor_storage_policies(si)
     except Exception as e:
-        return [{"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}]
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 # ---------------------------------------------------------------------------
@@ -150,15 +158,16 @@ def list_supervisor_storage_policies(target: Optional[str] = None) -> list[dict]
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def list_namespaces(target: Optional[str] = None) -> list[dict]:
+def list_namespaces(target: Optional[str] = None) -> dict:
     """[READ] List all vSphere Namespaces on the target vCenter with their configuration status.
 
-    Returns a list of objects: namespace (name), config_status (RUNNING = healthy,
-    CONFIGURING = being set up, REMOVING = being deleted, ERROR = failed), and
-    description. Returns all namespaces in one call — no pagination. Read-only,
-    no side effects. Use this to discover namespace names, then call
-    get_namespace for full details of one, or update_namespace / delete_namespace
-    to change it.
+    Returns the list envelope: 'items' holds objects with namespace (name),
+    config_status (RUNNING = healthy, CONFIGURING = being set up, REMOVING =
+    being deleted, ERROR = failed), and description; 'returned'/'total'/
+    'truncated' state whether the listing is complete. All namespaces come
+    back in one call, so truncated is always false. Read-only, no side
+    effects. Use this to discover namespace names, then call get_namespace for
+    full details of one, or update_namespace / delete_namespace to change it.
 
     Args:
         target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
@@ -169,7 +178,7 @@ def list_namespaces(target: Optional[str] = None) -> list[dict]:
         from vmware_vks.ops import namespace as _ns
         return _ns.list_namespaces(si)
     except Exception as e:
-        return [{"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}]
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
@@ -332,16 +341,17 @@ def delete_namespace(
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
-def list_vm_classes(target: Optional[str] = None) -> list[dict]:
+def list_vm_classes(target: Optional[str] = None) -> dict:
     """[READ] List VM classes available for sizing TKC cluster nodes.
 
-    Returns a list of {id (class name, e.g. 'best-effort-large'), cpu_count
-    (vCPUs), memory_mb (RAM in MB), gpu_count (vGPU + dynamic DirectPath I/O
-    devices; 0 if none)}. Returns all
-    classes in one call — no pagination. Read-only, no side effects. Call this
-    before create_tkc_cluster and pass the chosen 'id' as its vm_class
-    argument; 'guaranteed-*' classes reserve resources, 'best-effort-*'
-    classes do not.
+    Returns the list envelope: 'items' holds {id (class name, e.g.
+    'best-effort-large'), cpu_count (vCPUs), memory_mb (RAM in MB), gpu_count
+    (vGPU + dynamic DirectPath I/O devices; 0 if none)}, and 'returned'/
+    'total'/'truncated' state whether the listing is complete. All classes
+    come back in one call, so truncated is always false. Read-only, no side
+    effects. Call this before create_tkc_cluster and pass the chosen 'id' as
+    its vm_class argument; 'guaranteed-*' classes reserve resources,
+    'best-effort-*' classes do not.
 
     Args:
         target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
@@ -352,7 +362,7 @@ def list_vm_classes(target: Optional[str] = None) -> list[dict]:
         from vmware_vks.ops import namespace as _ns
         return _ns.list_vm_classes(si)
     except Exception as e:
-        return [{"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}]
+        return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
 
 
 # ---------------------------------------------------------------------------
@@ -718,6 +728,75 @@ def list_namespace_storage_usage(namespace: str, target: Optional[str] = None) -
         return _storage.list_namespace_storage_usage(si, namespace)
     except Exception as e:
         return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks doctor' to verify connectivity."}
+
+
+# ---------------------------------------------------------------------------
+# Read-only gate
+# ---------------------------------------------------------------------------
+
+
+def _config_read_only() -> Optional[bool]:
+    """Best-effort read of ``read_only`` from the config file.
+
+    Runs at import time, when no config file need exist yet (tests, ``--help``,
+    smoke checks), so every failure degrades to "not configured" and lets the
+    env vars decide. None and False are equivalent here — config is the last
+    link in the precedence chain — but None keeps 'not configured'
+    distinguishable from 'configured off' in logs and debugging.
+
+    Resolved through the same VMWARE_VKS_CONFIG override the connection manager
+    and ``_environment_for`` use. Reading the default path instead would silently
+    ignore ``read_only: true`` set in an operator's custom config file — a
+    safety switch that appears configured and does nothing.
+    """
+    try:
+        config_path = os.environ.get("VMWARE_VKS_CONFIG")
+        return load_config(Path(config_path) if config_path else None).read_only
+    except Exception:  # noqa: BLE001 — absent/unreadable config is not an error here
+        return None
+
+
+# Applied once, after every tool module above has registered. In read-only mode
+# the write tools are removed from the registry, so list_tools() never offers
+# them — the guarantee is structural rather than a prompt instruction the model
+# may ignore (VMware-AIops issue #31).
+WITHHELD_WRITE_TOOLS: list[str] = apply_read_only_gate(
+    mcp, "vmware-vks", config_flag=_config_read_only()
+)
+
+
+# ---------------------------------------------------------------------------
+# Environment declaration
+# ---------------------------------------------------------------------------
+
+
+_cached_config = mtime_cached_loader("VMWARE_VKS_CONFIG", CONFIG_FILE, load_config)
+
+
+def _environment_for(target: Optional[str]) -> str:
+    """Report the environment a target declares, for policy scoping.
+
+    Policy rules scope by environment ("irreversible work in production needs a
+    second person"), and vmware-policy cannot read this skill's config itself.
+    Registering this lookup is what lets those rules fire at all. Reloaded on
+    config.yaml mtime change so an edit takes effect without restarting the
+    server, and resolved through the same VMWARE_VKS_CONFIG override the
+    connection manager uses so both agree on which file is in force. The config
+    is cached via :func:`vmware_policy.mtime_cached_loader`, so repeated tool
+    calls pay one ``os.stat`` instead of a full YAML parse.
+    """
+    try:
+        return _cached_config().environment_for(target)
+    except Exception:  # noqa: BLE001 — an unreadable config means "undeclared"
+        return ""
+
+
+set_environment_resolver(_environment_for)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 
 def main() -> None:

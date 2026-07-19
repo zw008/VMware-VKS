@@ -26,8 +26,9 @@ def test_list_namespaces_returns_list():
             {"namespace": "dev", "config_status": "RUNNING", "description": ""}
         ]
         result = list_namespaces(si)
-    assert isinstance(result, list)
-    assert result[0]["namespace"] == "dev"
+    assert result["items"][0]["namespace"] == "dev"
+    assert result["total"] == 1
+    assert result["truncated"] is False
 
 
 def test_get_namespace_returns_dict():
@@ -83,6 +84,6 @@ def test_list_vm_classes_returns_list():
             {"id": "best-effort-large", "cpu_count": 4, "memory_MB": 8192}
         ]
         result = list_vm_classes(si)
-    assert result[0]["id"] == "best-effort-large"
-    assert result[0]["memory_mb"] == 8192
-    assert result[0]["gpu_count"] == 0
+    assert result["items"][0]["id"] == "best-effort-large"
+    assert result["items"][0]["memory_mb"] == 8192
+    assert result["items"][0]["gpu_count"] == 0

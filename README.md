@@ -9,6 +9,8 @@
 
 MCP Skill + CLI for VMware vSphere Kubernetes Service (VKS) management — Supervisor clusters, vSphere Namespaces, and VKS Cluster lifecycle. 20 MCP tools.
 
+- **Read-only mode** (v1.8.0) — one env var (`VMWARE_READ_ONLY=true`) strips every write tool **plus both kubeconfig tools** from the MCP registry at startup; ideal for audits, PoCs, and untrusted/local models. See [Read-Only Mode](#read-only-mode).
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## Companion Skills
@@ -17,12 +19,12 @@ MCP Skill + CLI for VMware vSphere Kubernetes Service (VKS) management — Super
 
 | Skill | Scope | Tools | Install |
 |-------|-------|:-----:|---------|
-| **[vmware-aiops](https://github.com/zw008/VMware-AIops)** ⭐ entry point | VM lifecycle, deployment, guest ops, clusters | 31 | `uv tool install vmware-aiops` |
-| **[vmware-monitor](https://github.com/zw008/VMware-Monitor)** | Read-only monitoring, alarms, events, VM info | 8 | `uv tool install vmware-monitor` |
+| **[vmware-aiops](https://github.com/zw008/VMware-AIops)** ⭐ entry point | VM lifecycle, deployment, guest ops, clusters | 49 | `uv tool install vmware-aiops` |
+| **[vmware-monitor](https://github.com/zw008/VMware-Monitor)** | Read-only monitoring, alarms, events, VM info | 27 | `uv tool install vmware-monitor` |
 | **[vmware-storage](https://github.com/zw008/VMware-Storage)** | Datastores, iSCSI, vSAN | 11 | `uv tool install vmware-storage` |
-| **[vmware-nsx](https://github.com/zw008/VMware-NSX)** | NSX networking: segments, gateways, NAT, IPAM | 31 | `uv tool install vmware-nsx-mgmt` |
-| **[vmware-nsx-security](https://github.com/zw008/VMware-NSX-Security)** | DFW microsegmentation, security groups, Traceflow | 20 | `uv tool install vmware-nsx-security` |
-| **[vmware-aria](https://github.com/zw008/VMware-Aria)** | Aria Ops metrics, alerts, capacity planning | 18 | `uv tool install vmware-aria` |
+| **[vmware-nsx](https://github.com/zw008/VMware-NSX)** | NSX networking: segments, gateways, NAT, IPAM | 33 | `uv tool install vmware-nsx-mgmt` |
+| **[vmware-nsx-security](https://github.com/zw008/VMware-NSX-Security)** | DFW microsegmentation, security groups, Traceflow | 21 | `uv tool install vmware-nsx-security` |
+| **[vmware-aria](https://github.com/zw008/VMware-Aria)** | Aria Ops metrics, alerts, capacity planning | 28 | `uv tool install vmware-aria` |
 
 ## Prerequisites
 
@@ -57,6 +59,39 @@ vmware-vks tkc list
 vmware-vks tkc create my-cluster -n dev --version v1.28.4+vmware.1 --vm-class best-effort-large
 vmware-vks tkc create my-cluster -n dev --apply
 ```
+
+## Read-Only Mode
+
+Set `VMWARE_READ_ONLY=true` and the MCP server withholds **9 of its 20 tools** at
+startup: the 7 write tools (Namespace/TKC create, update, scale, upgrade, delete)
+**plus both kubeconfig tools**. `get_supervisor_kubeconfig` / `get_tkc_kubeconfig`
+are read-only against vCenter, but they materialise a session-token kubeconfig
+file at a caller-supplied local path — so a locked-down deployment opts into
+credential files explicitly instead of receiving them by default.
+
+The guarantee is structural, not a prompt instruction: withheld tools are removed
+from the registry, so `list_tools()` never offers them and the model cannot call
+what it cannot see. **Off by default.** Fail-closed: if the mode is requested but
+cannot be guaranteed, the server refuses to start rather than running open.
+
+```json
+{
+  "mcpServers": {
+    "vmware-vks": {
+      "command": "vmware-vks",
+      "args": ["mcp"],
+      "env": {
+        "VMWARE_VKS_CONFIG": "~/.vmware-vks/config.yaml",
+        "VMWARE_READ_ONLY": "true"
+      }
+    }
+  }
+}
+```
+
+- **Per-skill override**: `VMWARE_VKS_READ_ONLY` beats the family-wide `VMWARE_READ_ONLY`, so this skill can differ from the rest of the family.
+- **Config alternative**: `read_only: true` in `~/.vmware-vks/config.yaml`. Precedence: per-skill env → family env → config → off.
+- **Startup log**: the server logs `Read-only mode active for vmware-vks — withheld 9 write tool(s): ...` so you can confirm the gate engaged.
 
 ## Common Workflows
 
@@ -234,7 +269,8 @@ vmware-vks-mcp
 
 | Feature | Description |
 |---------|-------------|
-| Read-heavy | 12/20 tools are read-only |
+| Read-heavy | 13/20 tools are read-only |
+| Read-only mode | `VMWARE_READ_ONLY=true` removes all 9 write-effecting tools (7 writes + 2 kubeconfig materialisers) from the MCP registry — see [Read-Only Mode](#read-only-mode) |
 | Dry-run default | `create_namespace`, `create_tkc_cluster`, `delete_namespace`, `delete_tkc_cluster` all default to `dry_run=True` |
 | TKC guard | `delete_namespace` rejects if TKC clusters exist inside |
 | Workload guard | `delete_tkc_cluster` rejects if Deployments/StatefulSets are running |
@@ -287,12 +323,12 @@ The namespace delete guard prevents deletion when TKC clusters exist inside. Del
 
 | Skill | Scope | Tools | Install |
 |-------|-------|:-----:|---------|
-| **[vmware-aiops](https://github.com/zw008/VMware-AIops)** ⭐ entry point | VM lifecycle, deployment, guest ops, clusters | 31 | `uv tool install vmware-aiops` |
-| **[vmware-monitor](https://github.com/zw008/VMware-Monitor)** | Read-only monitoring, alarms, events, VM info | 8 | `uv tool install vmware-monitor` |
+| **[vmware-aiops](https://github.com/zw008/VMware-AIops)** ⭐ entry point | VM lifecycle, deployment, guest ops, clusters | 49 | `uv tool install vmware-aiops` |
+| **[vmware-monitor](https://github.com/zw008/VMware-Monitor)** | Read-only monitoring, alarms, events, VM info | 27 | `uv tool install vmware-monitor` |
 | **[vmware-storage](https://github.com/zw008/VMware-Storage)** | Datastores, iSCSI, vSAN | 11 | `uv tool install vmware-storage` |
-| **[vmware-nsx](https://github.com/zw008/VMware-NSX)** | NSX networking: segments, gateways, NAT, IPAM | 31 | `uv tool install vmware-nsx-mgmt` |
-| **[vmware-nsx-security](https://github.com/zw008/VMware-NSX-Security)** | DFW microsegmentation, security groups, Traceflow | 20 | `uv tool install vmware-nsx-security` |
-| **[vmware-aria](https://github.com/zw008/VMware-Aria)** | Aria Ops metrics, alerts, capacity planning | 18 | `uv tool install vmware-aria` |
+| **[vmware-nsx](https://github.com/zw008/VMware-NSX)** | NSX networking: segments, gateways, NAT, IPAM | 33 | `uv tool install vmware-nsx-mgmt` |
+| **[vmware-nsx-security](https://github.com/zw008/VMware-NSX-Security)** | DFW microsegmentation, security groups, Traceflow | 21 | `uv tool install vmware-nsx-security` |
+| **[vmware-aria](https://github.com/zw008/VMware-Aria)** | Aria Ops metrics, alerts, capacity planning | 28 | `uv tool install vmware-aria` |
 
 ## License
 

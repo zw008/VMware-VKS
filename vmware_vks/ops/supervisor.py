@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
-from vmware_policy import sanitize
+from vmware_policy import paginated, sanitize
 
 from vmware_vks.connection import get_verify_ssl
 from vmware_vks.errors import (
@@ -202,16 +202,19 @@ def get_supervisor_status(si: ServiceInstance, cluster_id: str) -> dict:
     return result
 
 
-def list_supervisor_storage_policies(si: ServiceInstance) -> list[dict]:
+def list_supervisor_storage_policies(si: ServiceInstance) -> dict:
     """List vCenter storage policies (the policies users assign to Namespaces).
 
     Calls ``GET /api/vcenter/storage/policies`` — the
     ``namespace-management/storage/storage-policies`` path does not exist
     in the vSphere Automation API (it 404s on every call). Each item is
     {policy (policy ID), name (display name), description}.
+
+    Returns the family list envelope; the endpoint returns every policy in one
+    response, so ``total`` is the real count and nothing is truncated.
     """
     data = _rest_get(si, "/vcenter/storage/policies")
-    return [
+    rows = [
         {
             "policy": item.get("policy"),
             "name": sanitize(item.get("name", "") or ""),
@@ -219,3 +222,4 @@ def list_supervisor_storage_policies(si: ServiceInstance) -> list[dict]:
         }
         for item in (data if isinstance(data, list) else [])
     ]
+    return paginated(rows, total=len(rows))

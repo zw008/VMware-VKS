@@ -128,6 +128,15 @@ class TargetConfig:
     username: str
     port: int = 443
     verify_ssl: bool = True
+    environment: str = ""
+    """Which environment this target is, e.g. production / staging / lab.
+
+    Policy rules scope by environment, and the shipped baseline warns on
+    state-changing operations against a target that declares none — an
+    unlabelled target is treated as unknown, not as safe, and the next major
+    release refuses them. Read-only operations are never affected. See
+    :mod:`vmware_policy.environment`.
+    """
 
     @property
     def password(self) -> str:
@@ -145,6 +154,12 @@ class AppConfig:
     """Top-level application config."""
 
     targets: tuple[TargetConfig, ...] = ()
+    read_only: bool = False
+    """Withhold every write tool from the MCP registry.
+
+    Env vars ``VMWARE_VKS_READ_ONLY`` / ``VMWARE_READ_ONLY`` override this.
+    See :mod:`vmware_policy.readonly`.
+    """
 
     def get_target(self, name: str) -> TargetConfig:
         for t in self.targets:
@@ -152,6 +167,20 @@ class AppConfig:
                 return t
         available = ", ".join(t.name for t in self.targets)
         raise KeyError(f"Target '{name}' not found. Available: {available}")
+
+    def environment_for(self, name: str | None) -> str:
+        """Return the environment declared by ``name``, or by the default target.
+
+        An empty name means "the caller omitted --target", which resolves to
+        the default target — the same one the connection layer would use, so
+        policy and connection never disagree about which vCenter is in play.
+        Returns "" when the target is unknown or declares nothing.
+        """
+        try:
+            target = self.get_target(name) if name else self.default_target
+        except (KeyError, ValueError):
+            return ""
+        return target.environment
 
     @property
     def default_target(self) -> TargetConfig:
@@ -177,7 +206,11 @@ def load_config(config_path: Path | None = None) -> AppConfig:
             username=t.get("username", "administrator@vsphere.local"),
             port=t.get("port", 443),
             verify_ssl=t.get("verify_ssl", True),
+            environment=str(t.get("environment", "") or "").strip(),
         )
         for t in raw.get("targets", [])
     )
-    return AppConfig(targets=targets)
+    return AppConfig(
+        targets=targets,
+        read_only=bool(raw.get("read_only", False)),
+    )

@@ -11,7 +11,7 @@ installer:
   package: vmware-vks
 allowed-tools:
   - Bash
-metadata: {"openclaw":{"requires":{"env":["VMWARE_VKS_CONFIG"],"bins":["vmware-vks"],"config":["~/.vmware-vks/config.yaml","~/.vmware-vks/.env"]},"optional":{"env":["VMWARE_<TARGET>_PASSWORD"],"bins":["vmware-policy"]},"primaryEnv":"VMWARE_VKS_CONFIG","homepage":"https://github.com/zw008/VMware-VKS","emoji":"☸️","os":["macos","linux"]}}
+metadata: {"openclaw":{"requires":{"env":["VMWARE_VKS_CONFIG"],"bins":["vmware-vks"],"config":["~/.vmware-vks/config.yaml","~/.vmware-vks/.env"]},"optional":{"env":["VMWARE_<TARGET>_PASSWORD","VMWARE_READ_ONLY","VMWARE_VKS_READ_ONLY","VMWARE_AUDIT_APPROVED_BY"],"bins":["vmware-policy"]},"primaryEnv":"VMWARE_VKS_CONFIG","homepage":"https://github.com/zw008/VMware-VKS","emoji":"☸️","os":["macos","linux"]}}
 compatibility: >
   vmware-policy auto-installed as Python dependency (provides @vmware_tool decorator and audit logging). All write operations audited to ~/.vmware/audit.db (SQLite, via vmware-policy) with a local JSON-Lines mirror at ~/.vmware-vks/audit.log.
   Credentials: Each vCenter target requires a per-target password env var in ~/.vmware-vks/.env following the pattern VMWARE_<TARGET_NAME_UPPER>_PASSWORD (e.g., target "vcenter-01" → VMWARE_VCENTER_01_PASSWORD). Passwords are never logged, never echoed, never included in audit entries. Kubeconfig tokens returned by get_supervisor_kubeconfig and get_tkc_kubeconfig are short-lived vCenter session tokens, not persistent credentials.
@@ -147,6 +147,12 @@ Supervisor Cluster → vSphere Namespaces → TanzuKubernetesCluster
 
 All accept optional `target` parameter to specify a named vCenter.
 
+`list_namespaces`, `list_supervisor_storage_policies` and `list_vm_classes` return the family
+list envelope — `{items, returned, limit, total, truncated, hint}` — rather than a bare array.
+Read the rows from `items`; `truncated` says whether the listing is complete, so it never has
+to be guessed from the row count. These three read their collection in one un-paged call, so
+`total` is the real count and `truncated` is always `false`.
+
 | Category | Tool | Type |
 |----------|------|:----:|
 | **Supervisor** | `check_vks_compatibility` | Read |
@@ -176,7 +182,7 @@ All accept optional `target` parameter to specify a named vCenter.
 
 `delete_tkc_cluster` — requires `confirmed=True` and checks for running workloads. Rejects if found unless `force=True`.
 
-**Credential handling**: `get_supervisor_kubeconfig` and `get_tkc_kubeconfig` return short-lived session tokens (not long-lived credentials). Tokens are derived from the authenticated vCenter session and expire when the session ends. Kubeconfig output is intended for local `kubectl` use — agents should write it to a file (`-o <path>`) rather than displaying tokens in conversation context.
+**Credential handling**: `get_supervisor_kubeconfig` and `get_tkc_kubeconfig` return short-lived session tokens (not long-lived credentials). Tokens are derived from the authenticated vCenter session and expire when the session ends. Kubeconfig output is intended for local `kubectl` use — agents should write it to a file (`-o <path>`) rather than displaying tokens in conversation context. In read-only mode these two tools are withheld along with the write tools, because they materialise credential files locally.
 
 > Full capability details and safety features: see `references/capabilities.md`
 
@@ -249,6 +255,27 @@ Verify the cluster is in "Running" phase before scaling. Clusters in "Creating" 
 ### Delete namespace rejected unexpectedly
 
 The namespace delete guard prevents deletion when TKC clusters exist inside. Delete all TKC clusters in the namespace first, then retry.
+
+### "target does not declare which environment it is" on a write
+
+Policy scopes its rules by environment ("irreversible work in production needs a second person"), and it reads that from an explicit `environment:` declaration on each target — not from the target's name. A target that declares nothing counts as *unknown*:
+
+```
+delete_tkc_cluster ran against a target that declares no environment. A future
+release will REFUSE this. Add 'environment: <name>' to that target in the
+skill's config.yaml.
+```
+
+Today this is a **warning only** — the operation still runs. The next major release refuses it, so declare it now and that upgrade is a no-op:
+
+```yaml
+targets:
+  - name: vcenter01
+    host: vcenter.example.com
+    environment: production   # production | staging | lab | your own label
+```
+
+Read-only tools are never affected — listing namespaces, clusters and VM classes works untouched whether or not a target declares anything. Once declared, a target labelled `production` additionally requires a named approver (`VMWARE_AUDIT_APPROVED_BY`) for irreversible work; other labels change nothing beyond the risk tier recorded in the audit log. Run `vmware-audit policy` to see the rules in force.
 
 ## Prerequisites
 

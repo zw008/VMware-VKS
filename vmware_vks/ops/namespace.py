@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
-from vmware_policy import sanitize
+from vmware_policy import paginated, sanitize
 
 from vmware_vks.ops.supervisor import _rest_delete, _rest_get, _rest_patch, _rest_post
 
@@ -37,10 +37,16 @@ def _list_tkc_in_namespace(si: ServiceInstance, namespace: str) -> list[str]:
     return [c["name"] for c in result.get("clusters", [])]
 
 
-def list_namespaces(si: ServiceInstance) -> list[dict]:
-    """List all vSphere Namespaces."""
+def list_namespaces(si: ServiceInstance) -> dict:
+    """List all vSphere Namespaces.
+
+    Returns the family list envelope. The endpoint returns the whole
+    collection in one response, so ``total`` is the real namespace count and
+    ``truncated`` is always False — the agent is told the listing is complete
+    rather than left to guess (VMware-AIops issue #31).
+    """
     data = _rest_get(si, "/vcenter/namespaces/instances")
-    return [
+    rows = [
         {
             "namespace": sanitize(item.get("namespace", "")),
             "config_status": item.get("config_status"),
@@ -48,6 +54,7 @@ def list_namespaces(si: ServiceInstance) -> list[dict]:
         }
         for item in (data if isinstance(data, list) else [])
     ]
+    return paginated(rows, total=len(rows))
 
 
 def get_namespace(si: ServiceInstance, name: str) -> dict:
@@ -147,13 +154,16 @@ def delete_namespace(
     return {"namespace": name, "status": "deleted"}
 
 
-def list_vm_classes(si: ServiceInstance) -> list[dict]:
+def list_vm_classes(si: ServiceInstance) -> dict:
     """List available VM classes for TKC node sizing.
 
     VirtualMachineClasses.Info wire fields: memory is ``memory_MB`` and GPU
     info nests under ``devices`` (``vgpu_devices`` +
     ``dynamic_direct_path_io_devices``) — there is no flat gpu_count field,
     so we derive it from the device lists.
+
+    Returns the family list envelope; the endpoint returns every class in one
+    response, so ``total`` is the real count and nothing is truncated.
     """
     data = _rest_get(si, "/vcenter/namespace-management/virtual-machine-classes")
     classes = []
@@ -170,4 +180,4 @@ def list_vm_classes(si: ServiceInstance) -> list[dict]:
                 "gpu_count": gpu_count,
             }
         )
-    return classes
+    return paginated(classes, total=len(classes))

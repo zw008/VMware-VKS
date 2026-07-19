@@ -268,7 +268,7 @@ def supervisor_storage_policies(
     from vmware_vks.ops.supervisor import list_supervisor_storage_policies
 
     si = _get_si(target)
-    policies = list_supervisor_storage_policies(si)
+    policies = list_supervisor_storage_policies(si)["items"]
     table = Table("Policy ID", "Name", "Description")
     for p in policies:
         table.add_row(str(p["policy"]), p["name"], p["description"])
@@ -284,7 +284,7 @@ def namespace_list(
     from vmware_vks.ops.namespace import list_namespaces
 
     si = _get_si(target)
-    nss = list_namespaces(si)
+    nss = list_namespaces(si)["items"]
     table = Table("Namespace", "Status", "Description")
     for ns in nss:
         table.add_row(ns["namespace"], ns["config_status"], ns.get("description", ""))
@@ -407,7 +407,7 @@ def namespace_vm_classes(
     from vmware_vks.ops.namespace import list_vm_classes
 
     si = _get_si(target)
-    classes = list_vm_classes(si)
+    classes = list_vm_classes(si)["items"]
     table = Table("ID", "CPU", "Memory (MB)", "GPU")
     for c in classes:
         table.add_row(
@@ -508,7 +508,7 @@ def tkc_create(
         k8s_version = typer.prompt("K8s version")
 
     if not vm_class:
-        classes = list_vm_classes(si)
+        classes = list_vm_classes(si)["items"]
         class_choices = [c["id"] for c in classes if c.get("id")]
         if class_choices:
             console.print(f"Available VM classes: {', '.join(class_choices[:5])}")

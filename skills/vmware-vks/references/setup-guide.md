@@ -61,6 +61,7 @@ targets:
     username: admin@vsphere.local
     port: 443
     verify_ssl: false
+    environment: production
 EOF
 
 echo "VMWARE_VKS_VCENTER01_PASSWORD=your_password" > ~/.vmware-vks/.env
@@ -69,6 +70,10 @@ chmod 600 ~/.vmware-vks/.env
 # 3. Verify
 vmware-vks check
 ```
+
+**`environment` (declare it now)**: policy rules scope by environment, and this declaration is the only thing that tells them which of your vCenters is production — the target's *name* is not used for it. Any label you like works (`production`, `staging`, `lab`, `dc2-prod`); `production` is the one the shipped rules attach a second-person approval requirement to for irreversible work.
+
+A target that declares nothing counts as unknown. Today a state-changing operation against it still runs and logs a warning; the next major release refuses it. Declaring `environment:` on each target now makes that upgrade a no-op. Read-only operations are never affected either way. Run `vmware-audit policy` to see the rules currently in force.
 
 ## MCP Mode (Optional)
 
@@ -141,7 +146,7 @@ This skill follows a defense-in-depth approach with six security properties:
 
 5. **Prompt Injection Protection** -- All tool inputs are passed as typed Python parameters (`str`, `int`, `bool`), never interpolated into shell commands. No `eval`, `exec`, or subprocess calls with user-controlled data.
 
-6. **Least Privilege** -- 12/20 tools are read-only. All write operations default to `dry_run=True` where applicable. Destructive operations (`delete_namespace`, `delete_tkc_cluster`) require explicit `confirmed=True` and pass through safety guards that cannot be bypassed without `force=True`. All write operations are audit-logged to `~/.vmware/audit.db` (SQLite WAL, via vmware-policy).
+6. **Least Privilege** -- 13/20 tools are read-only. All write operations default to `dry_run=True` where applicable. Destructive operations (`delete_namespace`, `delete_tkc_cluster`) require explicit `confirmed=True` and pass through safety guards that cannot be bypassed without `force=True`. All write operations are audit-logged to `~/.vmware/audit.db` (SQLite WAL, via vmware-policy).
 
 ## Supported AI Platforms
 

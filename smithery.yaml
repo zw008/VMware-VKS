@@ -9,7 +9,7 @@ startCommand:
     required: []
   commandFunction: |
     (config) => ({
-      command: "python",
-      args: ["-m", "mcp_server"],
+      command: "vmware-vks",
+      args: ["mcp"],
       env: config.config_path ? { VMWARE_VKS_CONFIG: config.config_path } : {}
     })

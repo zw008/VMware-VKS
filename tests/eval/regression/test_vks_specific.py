@@ -59,7 +59,7 @@ def test_storage_policies_parses_policy_name_description():
             }
         ]
         result = list_supervisor_storage_policies(si)
-    assert result == [
+    assert result["items"] == [
         {
             "policy": "aa6d5a82-1c88-45da-85d3-3d74b91a5bad",
             "name": "vSAN Default Storage Policy",
@@ -73,9 +73,9 @@ def test_storage_policies_tolerates_missing_description():
     with patch("vmware_vks.ops.supervisor._rest_get") as mock_get:
         mock_get.return_value = [{"policy": "p-1", "name": "Gold"}]
         result = list_supervisor_storage_policies(si)
-    assert result[0]["policy"] == "p-1"
-    assert result[0]["name"] == "Gold"
-    assert result[0]["description"] == ""
+    assert result["items"][0]["policy"] == "p-1"
+    assert result["items"][0]["name"] == "Gold"
+    assert result["items"][0]["description"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ def test_vm_classes_parses_memory_mb_wire_name():
             {"id": "best-effort-large", "cpu_count": 4, "memory_MB": 8192}
         ]
         result = list_vm_classes(si)
-    assert result[0]["memory_mb"] == 8192
+    assert result["items"][0]["memory_mb"] == 8192
 
 
 def test_vm_classes_derives_gpu_count_from_devices():
@@ -110,8 +110,8 @@ def test_vm_classes_derives_gpu_count_from_devices():
             {"id": "no-gpu-class", "cpu_count": 2, "memory_MB": 4096},
         ]
         result = list_vm_classes(si)
-    assert result[0]["gpu_count"] == 2
-    assert result[1]["gpu_count"] == 0
+    assert result["items"][0]["gpu_count"] == 2
+    assert result["items"][1]["gpu_count"] == 0
 
 
 # ---------------------------------------------------------------------------

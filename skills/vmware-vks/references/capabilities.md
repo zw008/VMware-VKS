@@ -10,14 +10,14 @@ Each operation is classified by autonomy level per the Enterprise Harness Engine
 |:-:|---|---|---|
 | **L1** | Read-only, raw data | Always auto-run | `check_vks_compatibility`, `get_supervisor_status`, `list_supervisor_storage_policies`, `list_namespaces`, `get_namespace`, TKC list/get, kubeconfig fetch |
 | **L2** | Read + analysis / recommendation | Always auto-run | namespace quota analysis, TKC health correlation, storage policy compatibility checks |
-| **L3** | Single write — user must approve | Only after explicit confirmation; destructive ops require double-confirm + `--dry-run` | `create_namespace`, `update_namespace`, `delete_namespace`, `create_tkc`, `update_tkc`, `delete_tkc` |
+| **L3** | Single write — user must approve | Only after explicit confirmation; destructive ops require double-confirm + `--dry-run` | `create_namespace`, `update_namespace`, `delete_namespace`, `create_tkc_cluster`, `upgrade_tkc_cluster`, `scale_tkc_cluster`, `delete_tkc_cluster` |
 | **L4** | Multi-step plan / apply workflow | Plan generation auto; apply gated by user approval | *(roadmap — TKC fleet upgrades, multi-namespace bootstrapping plans)* |
 | **L5** | Auto-remediation from learned pattern | Pattern library only; requires `risk:low` + `reversible:true` + `repeatable:true` | *(roadmap — candidates: stuck TKC reconciliation, namespace quota bumps)* |
 
 **Notes**:
 - L1/L2 tools are always safe for agents to call without confirmation.
 - L3 tools always pass through the `@vmware_tool` decorator: connection check → policy check → audit log → double-confirm.
-- Kubeconfig retrieval (L1) returns short-lived session tokens; agents should write to file (`-o <path>`) rather than displaying tokens in conversation context.
+- Kubeconfig retrieval (L1) returns short-lived session tokens; agents should write to file (`-o <path>`) rather than displaying tokens in conversation context. Both kubeconfig tools are read-only against vCenter but materialise a credential file at a model-supplied local path, so read-only mode withholds them alongside the 7 write tools — 9 of 20 removed, 11 surviving.
 
 ## 1. Supervisor Layer (Read-Only)
 
@@ -25,7 +25,13 @@ Each operation is classified by autonomy level per the Enterprise Harness Engine
 |------|----------------|
 | `check_vks_compatibility` | vCenter version (pass/fail for 8.x+), WCP enabled status, network backend type |
 | `get_supervisor_status` | Cluster ID, config status, Kubernetes status, API endpoint URL, network provider, and `kubernetes_version` (read from the `software/clusters` endpoint; null with a `kubernetes_version_hint` if that call fails) |
-| `list_supervisor_storage_policies` | vCenter storage policies: `policy` (ID), `name`, `description`. Pass the `policy` ID (not the display name) when creating a Namespace or TKC |
+| `list_supervisor_storage_policies` | List envelope; `items` holds vCenter storage policies: `policy` (ID), `name`, `description`. Pass the `policy` ID (not the display name) when creating a Namespace or TKC |
+
+**List envelope**: `list_supervisor_storage_policies`, `list_namespaces` and `list_vm_classes`
+return `{items, returned, limit, total, truncated, hint}` instead of a bare array, so an agent
+can tell a complete answer from a first page rather than inferring it (VMware-AIops issue #31).
+All three fetch their collection in a single un-paged REST call, so `total` is the real count
+and `truncated` is always `false`.
 
 ## 2. Namespace Layer
 
@@ -81,7 +87,7 @@ The result is cached per vCenter host, so the discovery call happens at most onc
 | TKC Delete Guard | Rejects if Deployments/StatefulSets/DaemonSets are running -- prevents data loss |
 | Force Override | `force=True` on `delete_tkc_cluster` bypasses workload guard (explicit acknowledgement) |
 | Audit Trail | All write operations logged to `~/.vmware/audit.db` (SQLite WAL, via vmware-policy) plus a local JSON-Lines mirror at `~/.vmware-vks/audit.log`, with timestamp, target, operation, parameters, result, user |
-| Read-Only Majority | 12/20 tools are read-only |
+| Read-Only Majority | 13/20 tools are read-only |
 | SSL Support | `verify_ssl: false` supported for self-signed vCenter certs (enterprise standard) |
 | In-Memory Kubeconfig | Supervisor/TKC kubeconfig is constructed as a Python dict and loaded into the kubernetes client via `load_kube_config_from_dict()`. The vCenter session bearer token never persists to disk during MCP/CLI calls — eliminates the temp-file TOCTOU window present pre-v1.5.18. Explicit `kubeconfig get -o <path>` export still writes to the user-chosen file for downstream `kubectl` use. |
 

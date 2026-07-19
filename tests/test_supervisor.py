@@ -55,6 +55,5 @@ def test_list_supervisor_storage_policies_returns_list():
             {"policy": "policy-uuid-1", "name": "vsphere-storage", "description": "Default"}
         ]
         result = list_supervisor_storage_policies(si)
-    assert isinstance(result, list)
-    assert result[0]["policy"] == "policy-uuid-1"
-    assert result[0]["name"] == "vsphere-storage"
+    assert result["items"][0]["policy"] == "policy-uuid-1"
+    assert result["items"][0]["name"] == "vsphere-storage"
