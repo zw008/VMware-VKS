@@ -6,7 +6,7 @@ from vmware_vks.connection import ConnectionManager
 
 
 def _make_config():
-    target = TargetConfig(name="vc1", host="vc.example.com", username="admin@vsphere.local")
+    target = TargetConfig(name="vc1", host="vc.example.com", config_username="admin@vsphere.local")
     return AppConfig(targets=(target,))
 
 

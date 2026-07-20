@@ -181,7 +181,7 @@ def test_get_wcp_token_uses_connection_target_config():
 
     si = MagicMock()
     target = TargetConfig(name="lab", host="vc.example.com",
-                          username="admin", verify_ssl=False)
+                          config_username="admin", verify_ssl=False)
     connection._SI_TARGET[id(si)] = target
     connection._SI_VERIFY_SSL[id(si)] = False
     try:

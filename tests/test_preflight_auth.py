@@ -32,7 +32,7 @@ def _si_with_target(verify_ssl: bool = False):
     si = MagicMock()
     si._stub.host = "vc.example.com:443"
     target = TargetConfig(
-        name="lab", host="vc.example.com", username="admin", verify_ssl=verify_ssl
+        name="lab", host="vc.example.com", config_username="admin", verify_ssl=verify_ssl
     )
     connection._SI_TARGET[id(si)] = target
     connection._SI_VERIFY_SSL[id(si)] = verify_ssl

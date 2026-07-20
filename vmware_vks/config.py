@@ -125,7 +125,9 @@ class TargetConfig:
 
     name: str
     host: str
-    username: str
+    config_username: str
+    """Username as written in config.yaml. Read :attr:`username` instead — the
+    env var overrides this, and the override is what actually gets used."""
     port: int = 443
     verify_ssl: bool = True
     environment: str = ""
@@ -137,6 +139,21 @@ class TargetConfig:
     release refuses them. Read-only operations are never affected. See
     :mod:`vmware_policy.environment`.
     """
+
+    @property
+    def username(self) -> str:
+        """Username for this target, env var winning over config.yaml.
+
+        Resolved on every access, exactly like :attr:`password`. Reading it
+        once at load time would split the pair the override exists to keep
+        whole: a secret sidecar that rotates both halves mid-process would
+        move the password and leave the username behind, and the login would
+        use an account/password combination that was never issued together.
+        """
+        return os.environ.get(
+            f"VMWARE_VKS_{self.name.upper().replace('-', '_')}_USERNAME",
+            self.config_username,
+        )
 
     @property
     def password(self) -> str:
@@ -203,7 +220,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         TargetConfig(
             name=t["name"],
             host=t["host"],
-            username=t.get("username", "administrator@vsphere.local"),
+            config_username=t.get("username", "administrator@vsphere.local"),
             port=t.get("port", 443),
             verify_ssl=t.get("verify_ssl", True),
             environment=str(t.get("environment", "") or "").strip(),

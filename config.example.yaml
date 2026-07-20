@@ -5,6 +5,11 @@ targets:
   - name: vcenter01
     host: vcenter.example.com
     username: administrator@vsphere.local
+    # Set password via env: export VMWARE_VKS_VCENTER01_PASSWORD=xxx
+    # The username above can also come from the environment:
+    #   export VMWARE_VKS_VCENTER01_USERNAME=svc-account@vsphere.local
+    # Set both when a secret store supplies the pair — they resolve together,
+    # so rotating one without the other cannot happen.
     port: 443
     # verify_ssl: true is the default (v1.5.15+). Set to false ONLY for
     # self-signed certs in lab/dev environments — disables SSL verification.
