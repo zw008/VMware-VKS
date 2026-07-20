@@ -75,50 +75,30 @@
     "manifest_context_headroom": {
       "detail": {
         "heaviest_tools": {
-          "create_namespace": 301,
-          "create_tkc_cluster": 326,
-          "delete_tkc_cluster": 225,
-          "scale_tkc_cluster": 302,
-          "update_namespace": 326
+          "create_namespace": 333,
+          "create_tkc_cluster": 343,
+          "delete_tkc_cluster": 262,
+          "scale_tkc_cluster": 249,
+          "update_namespace": 286
         },
-        "manifest_tokens": 3826,
-        "mean_tokens_per_tool": 191.3,
+        "manifest_tokens": 3830,
+        "mean_tokens_per_tool": 191.5,
         "reference_context": 16384,
         "tool_count": 20
       },
       "maximum": 16384,
       "pct": 76.6,
       "unit": "tokens",
-      "value": 12558
+      "value": 12554
     },
     "parameter_documentation_coverage": {
       "detail": {
-        "undocumented_by_tool": {
-          "check_vks_compatibility": [
-            "target"
-          ],
-          "create_namespace": [
-            "description",
-            "target"
-          ],
-          "create_tkc_cluster": [
-            "target"
-          ],
-          "delete_namespace": [
-            "target"
-          ],
-          "delete_tkc_cluster": [
-            "target"
-          ],
-          "get_tkc_kubeconfig": [
-            "target"
-          ]
-        }
+        "undocumented_by_tool": {}
       },
       "maximum": 65,
-      "pct": 89.2,
+      "pct": 100.0,
       "unit": "parameters",
-      "value": 58
+      "value": 65
     },
     "per_tool_token_discipline": {
       "detail": {
@@ -132,9 +112,9 @@
     },
     "read_only_manifest_saving": {
       "detail": {
-        "full_manifest_tokens": 3826,
+        "full_manifest_tokens": 3830,
         "full_tool_count": 20,
-        "gated_manifest_tokens": 1714,
+        "gated_manifest_tokens": 1595,
         "gated_tool_count": 11,
         "withheld_tools": [
           "create_namespace",
@@ -148,10 +128,10 @@
           "upgrade_tkc_cluster"
         ]
       },
-      "maximum": 3826,
-      "pct": 55.2,
+      "maximum": 3830,
+      "pct": 58.4,
       "unit": "tokens",
-      "value": 2112
+      "value": 2235
     },
     "read_write_marker_coverage": {
       "detail": {
@@ -194,77 +174,42 @@
     "tool_description_quality": {
       "detail": {
         "per_dimension_pct": {
-          "args": 70.0,
-          "gotcha": 70.0,
+          "args": 100.0,
+          "gotcha": 100.0,
           "marker": 100.0,
-          "next_hop": 55.0,
-          "what": 70.0,
-          "when": 55.0
+          "next_hop": 100.0,
+          "what": 100.0,
+          "when": 100.0
         },
         "tools_graded": 20,
         "weakest_tools": {
-          "check_vks_compatibility": [
-            "args",
-            "next_hop"
-          ],
-          "create_namespace": [
-            "args",
-            "gotcha",
-            "what",
-            "when"
-          ],
-          "delete_namespace": [
-            "args",
-            "next_hop",
-            "what"
-          ],
-          "delete_tkc_cluster": [
-            "args",
-            "next_hop",
-            "what",
-            "when"
-          ],
-          "get_namespace": [
-            "gotcha",
-            "next_hop",
-            "what",
-            "when"
-          ],
-          "get_tkc_cluster": [
-            "gotcha",
-            "next_hop",
-            "what",
-            "when"
-          ],
-          "get_tkc_kubeconfig": [
-            "args",
-            "gotcha",
-            "next_hop"
-          ],
-          "upgrade_tkc_cluster": [
-            "gotcha",
-            "what",
-            "when"
-          ]
+          "check_vks_compatibility": [],
+          "create_namespace": [],
+          "create_tkc_cluster": [],
+          "delete_namespace": [],
+          "delete_tkc_cluster": [],
+          "get_harbor_info": [],
+          "get_namespace": [],
+          "get_supervisor_kubeconfig": []
         }
       },
       "maximum": 120,
-      "pct": 70.0,
+      "pct": 100.0,
       "unit": "points",
-      "value": 84
+      "value": 120
     },
     "tool_failure_payload_quality": {
       "detail": {
         "bare_string_error_lines": [],
-        "carries_hint": 13,
+        "carries_hint": 20,
         "dict_shaped": 20,
         "error_return_sites": 20,
-        "hint_names_artifact": 13
+        "hint_names_artifact": 20
       },
       "maximum": 60,
-      "pct": 76.7,
+      "pct": 100.0,
       "unit": "checks",
-      "value": 46
+      "value": 60
     }
   }
 }

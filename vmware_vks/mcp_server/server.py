@@ -105,10 +105,15 @@ def _get_si(target: Optional[str] = None):
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def check_vks_compatibility(target: Optional[str] = None) -> dict:
-    """[READ] Check if this vCenter supports VKS (requires vSphere 8.x+).
+    """[READ] Check whether this vCenter supports VKS (requires vSphere 8.x+).
 
-    Returns: compatible (bool), vcenter_version, wcp_enabled_clusters, hint.
-    Call this first before any VKS operations.
+    Returns compatible (bool), vcenter_version, wcp_enabled_clusters
+    and wcp_clusters ({cluster, status}). Start here: those cluster MoRefs are
+    the cluster_id for get_supervisor_status and create_namespace. Only
+    reports vCenter-level support — a listed cluster may still be CONFIGURING.
+
+    Args:
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -121,22 +126,19 @@ def check_vks_compatibility(target: Optional[str] = None) -> dict:
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def get_supervisor_status(cluster_id: str, target: Optional[str] = None) -> dict:
-    """[READ] Get the status of one Supervisor Cluster (vSphere with Tanzu control plane).
+    """[READ] Get the health of one Supervisor Cluster (vSphere with Tanzu control plane).
 
-    Returns cluster_id, config_status (RUNNING = healthy, CONFIGURING, ERROR,
-    REMOVING), kubernetes_status (READY / WARNING / ERROR),
-    api_server_cluster_endpoint (Supervisor K8s API address),
-    kubernetes_version (from the software/clusters endpoint; null plus a
-    kubernetes_version_hint if that call fails), and network_provider.
-    Read-only. Run
-    check_vks_compatibility first to discover cluster IDs; use this to verify
-    a Supervisor is healthy before creating namespaces or TKC clusters on it.
+    Returns cluster_id, config_status (RUNNING = healthy, else CONFIGURING /
+    ERROR / REMOVING), kubernetes_status (READY / WARNING / ERROR),
+    api_server_cluster_endpoint, kubernetes_version (null plus
+    kubernetes_version_hint if unavailable), and network_provider. Run
+    check_vks_compatibility first for cluster IDs; use this to confirm a
+    Supervisor is healthy before create_namespace or create_tkc_cluster.
 
     Args:
-        cluster_id: Compute cluster MoRef ID, e.g. 'domain-c1' (from the
-            wcp_clusters field of check_vks_compatibility).
-        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
-            use the default target defined in that file.
+        cluster_id: Compute cluster MoRef, e.g. 'domain-c1' (wcp_clusters
+            field of check_vks_compatibility).
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -149,19 +151,16 @@ def get_supervisor_status(cluster_id: str, target: Optional[str] = None) -> dict
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def list_supervisor_storage_policies(target: Optional[str] = None) -> dict:
-    """[READ] List vCenter storage policies (the policies assigned to Supervisor Namespaces).
+    """[READ] List vCenter storage policies assignable to Supervisor Namespaces.
 
-    Returns the list envelope: 'items' holds {policy (policy ID), name
-    (display name), description}, and 'returned'/'total'/'truncated' state
-    whether the listing is complete. All policies come back in one call, so
-    truncated is always false. Read-only, no side effects. Call this before
-    create_namespace or update_namespace to obtain a valid storage_policy
-    value (pass the 'policy' ID). For PVC-level usage inside a namespace, use
+    Returns the list envelope: items of {policy (ID), name, description} plus
+    returned/total/truncated — one call returns them all, so truncated is
+    always false. Call this before create_namespace or update_namespace and
+    pass the 'policy' ID as their storage_policy. For PVC-level usage use
     list_namespace_storage_usage instead.
 
     Args:
-        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
-            use the default target defined in that file.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -178,19 +177,17 @@ def list_supervisor_storage_policies(target: Optional[str] = None) -> dict:
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def list_namespaces(target: Optional[str] = None) -> dict:
-    """[READ] List all vSphere Namespaces on the target vCenter with their configuration status.
+    """[READ] List all vSphere Namespaces on the target vCenter with their status.
 
-    Returns the list envelope: 'items' holds objects with namespace (name),
-    config_status (RUNNING = healthy, CONFIGURING = being set up, REMOVING =
-    being deleted, ERROR = failed), and description; 'returned'/'total'/
-    'truncated' state whether the listing is complete. All namespaces come
-    back in one call, so truncated is always false. Read-only, no side
-    effects. Use this to discover namespace names, then call get_namespace for
-    full details of one, or update_namespace / delete_namespace to change it.
+    Returns the list envelope: items of {namespace, config_status (RUNNING =
+    healthy, CONFIGURING, REMOVING, ERROR), description} plus
+    returned/total/truncated — one call returns them all, so truncated is
+    always false. Start here, then call get_namespace for detail,
+    list_tkc_clusters for what runs inside, or update_namespace /
+    delete_namespace to change one.
 
     Args:
-        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
-            use the default target defined in that file.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -203,11 +200,18 @@ def list_namespaces(target: Optional[str] = None) -> dict:
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def get_namespace(name: str, target: Optional[str] = None) -> dict:
-    """[READ] Get detailed information for a single vSphere Namespace.
+    """[READ] Get detailed configuration for a single vSphere Namespace.
+
+    Returns one raw vCenter namespace object, not the list envelope:
+    config_status, description, storage_specs, quotas. Use
+    list_namespaces first for the name; follow with
+    list_namespace_storage_usage for PVC usage or list_tkc_clusters for the
+    clusters inside. Point-in-time only — a CONFIGURING namespace may
+    not have quotas applied.
 
     Args:
-        name: Namespace name (e.g. 'dev', 'production').
-        target: vCenter target name (uses default if not specified).
+        name: Namespace name, e.g. 'dev' (discover via list_namespaces).
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -244,15 +248,19 @@ def create_namespace(
 ) -> dict:
     """[WRITE] Create a vSphere Namespace on a Supervisor Cluster.
 
-    IMPORTANT: dry_run=True by default — set dry_run=False to actually create.
+    Returns {namespace, status: "created", cluster}, or {dry_run, spec} — a
+    dry run unless dry_run=False. Use update_namespace instead when
+    it already exists; confirm with get_namespace afterwards.
 
     Args:
         name: Namespace name (lowercase, no spaces).
-        cluster_id: Supervisor cluster MoRef (use get_supervisor_status to find).
-        storage_policy: Storage policy name (use list_supervisor_storage_policies).
-        cpu_limit: CPU limit in MHz (optional).
-        memory_limit_mib: Memory limit in MiB (optional).
-        dry_run: Preview without creating (default: True).
+        cluster_id: Supervisor MoRef (from check_vks_compatibility).
+        storage_policy: Policy ID (from list_supervisor_storage_policies).
+        cpu_limit: MHz. Omit for no limit.
+        memory_limit_mib: MiB. Omit for no limit.
+        description: Free-text label. Omit for none.
+        dry_run: Preview only (default: True).
+        target: vCenter in config.yaml; omit for the default.
     """
     from vmware_vks.ops import namespace as _ns
     t = target or "default"
@@ -271,7 +279,14 @@ def create_namespace(
                 resource=name, parameters=params,
                 result=f"error: {sanitize(str(e), 200)}",
             )
-        return {"error": _safe_error(e, "create_namespace")}
+        return {
+            "error": _safe_error(e, "create_namespace"),
+            "hint": (
+                "Verify cluster_id with check_vks_compatibility and "
+                "storage_policy with list_supervisor_storage_policies; "
+                "list_namespaces shows whether the name is already taken."
+            ),
+        }
     if not dry_run:
         _audit.log(
             target=t, operation="create_namespace",
@@ -292,21 +307,18 @@ def update_namespace(
 ) -> dict:
     """[WRITE] Update resource quotas or storage policy of an existing vSphere Namespace.
 
-    Only the fields you provide are patched; omitted fields keep their current
-    values. If no field is provided, returns status "no_changes" without calling
-    the API. On success returns {namespace, status: "updated"}. Applies
-    immediately (no dry_run); not destructive. Audited to ~/.vmware/audit.db
-    (SQLite) and ~/.vmware-vks/audit.log (JSON Lines).
-    Use create_namespace for new namespaces; use list_supervisor_storage_policies
-    to find valid storage_policy values.
+    Only the fields you pass are patched; omitting all of them returns status
+    "no_changes" without an API call, otherwise {namespace, status:
+    "updated"}. Applies immediately — no dry run, no undo. Use this rather
+    than create_namespace when the namespace exists; valid storage_policy
+    values come from list_supervisor_storage_policies.
 
     Args:
         name: Existing namespace name (discover via list_namespaces).
         cpu_limit: New CPU limit in MHz. Omit to keep current.
         memory_limit_mib: New memory limit in MiB. Omit to keep current.
-        storage_policy: New storage policy name. Omit to keep current.
-        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
-            use the default target defined in that file.
+        storage_policy: New storage policy ID. Omit to keep current.
+        target: vCenter in config.yaml; omit for the default.
     """
     from vmware_vks.ops import namespace as _ns
     t = target or "default"
@@ -318,7 +330,14 @@ def update_namespace(
     except Exception as e:
         _audit.log(target=t, operation="update_namespace",
                    resource=name, parameters={}, result=f"error: {sanitize(str(e), 200)}")
-        return {"error": _safe_error(e, "update_namespace")}
+        return {
+            "error": _safe_error(e, "update_namespace"),
+            "hint": (
+                "Run get_namespace for the namespace's current settings, or "
+                "list_supervisor_storage_policies for valid storage_policy "
+                "values."
+            ),
+        }
     _audit.log(target=t, operation="update_namespace",
                resource=name, parameters={}, result="success")
     return result
@@ -332,15 +351,19 @@ def delete_namespace(
     dry_run: bool = True,
     target: Optional[str] = None,
 ) -> dict:
-    """[WRITE] Delete a vSphere Namespace.
+    """[WRITE] Delete a vSphere Namespace and everything inside it.
 
-    SAFETY: Rejects if TKC clusters exist inside. Delete TKC clusters first.
-    IMPORTANT: dry_run=True by default — set dry_run=False AND confirmed=True to delete.
+    Returns {namespace, status: "deleted"}, or a preview by default. SAFETY:
+    refused while TKC clusters exist inside — run list_tkc_clusters to see
+    them, then delete_tkc_cluster on each. A dry run unless you pass
+    dry_run=False AND confirmed=True. Irreversible; prefer update_namespace to
+    only change quotas.
 
     Args:
-        name: Namespace name to delete.
-        confirmed: Must be True to proceed (safety gate).
-        dry_run: Preview without deleting (default: True).
+        name: Namespace name to delete (discover via list_namespaces).
+        confirmed: Must be True to proceed.
+        dry_run: Preview only (default: True).
+        target: vCenter in config.yaml; omit for the default.
     """
     from vmware_vks.ops import namespace as _ns
     t = target or "default"
@@ -351,7 +374,13 @@ def delete_namespace(
         if not dry_run and confirmed:
             _audit.log(target=t, operation="delete_namespace",
                        resource=name, parameters={}, result=f"error: {sanitize(str(e), 200)}")
-        return {"error": _safe_error(e, "delete_namespace")}
+        return {
+            "error": _safe_error(e, "delete_namespace"),
+            "hint": (
+                "Run list_tkc_clusters — clusters inside the namespace block "
+                "the delete — and get_namespace to confirm it still exists."
+            ),
+        }
     if not dry_run and confirmed:
         _audit.log(target=t, operation="delete_namespace",
                    resource=name, parameters={}, result="success")
@@ -363,18 +392,15 @@ def delete_namespace(
 def list_vm_classes(target: Optional[str] = None) -> dict:
     """[READ] List VM classes available for sizing TKC cluster nodes.
 
-    Returns the list envelope: 'items' holds {id (class name, e.g.
-    'best-effort-large'), cpu_count (vCPUs), memory_mb (RAM in MB), gpu_count
-    (vGPU + dynamic DirectPath I/O devices; 0 if none)}, and 'returned'/
-    'total'/'truncated' state whether the listing is complete. All classes
-    come back in one call, so truncated is always false. Read-only, no side
-    effects. Call this before create_tkc_cluster and pass the chosen 'id' as
-    its vm_class argument; 'guaranteed-*' classes reserve resources,
-    'best-effort-*' classes do not.
+    Returns the list envelope: items of {id (e.g.
+    'best-effort-large'), cpu_count, memory_mb, gpu_count (vGPU + DirectPath
+    I/O; 0 if none)} plus returned/total/truncated — one call returns them
+    all, so truncated is always false. Call this before create_tkc_cluster and
+    pass the chosen 'id' as its vm_class; 'guaranteed-*' classes reserve
+    resources, 'best-effort-*' do not.
 
     Args:
-        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
-            use the default target defined in that file.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -391,16 +417,16 @@ def list_vm_classes(target: Optional[str] = None) -> dict:
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def list_tkc_clusters(namespace: Optional[str] = None, target: Optional[str] = None) -> dict:
-    """[READ] List TanzuKubernetesCluster (TKC) clusters.
-
-    Args:
-        namespace: vSphere Namespace to filter by (lists all if not specified).
-        target: vCenter target name.
+    """[READ] List TanzuKubernetesCluster (TKC) clusters, optionally in one namespace.
 
     Returns the family list envelope: {items: [{name, namespace, phase,
     k8s_version}], returned, limit, total, truncated, hint}. The Supervisor
-    list is walked to completion, so total is the real count and truncated is
-    always False.
+    list is walked to completion, so truncated is always False. Start here, then call get_tkc_cluster for full detail or
+    get_tkc_kubeconfig for access.
+
+    Args:
+        namespace: vSphere Namespace to filter by. Omit to list every one.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -413,12 +439,19 @@ def list_tkc_clusters(namespace: Optional[str] = None, target: Optional[str] = N
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def get_tkc_cluster(name: str, namespace: str, target: Optional[str] = None) -> dict:
-    """[READ] Get detailed info for a single TKC cluster.
+    """[READ] Get detailed status for a single TKC cluster.
+
+    Returns one object, not the list envelope: name, namespace, phase,
+    k8s_version, control_plane_replicas, worker_replicas, conditions,
+    infrastructure_ready, control_plane_ready. Run list_tkc_clusters first — a
+    TKC name is only unique within one namespace. Poll this after
+    create_tkc_cluster, scale_tkc_cluster or upgrade_tkc_cluster to watch an
+    async change land.
 
     Args:
-        name: TKC cluster name.
-        namespace: vSphere Namespace containing the cluster.
-        target: vCenter target name.
+        name: Cluster name (via list_tkc_clusters).
+        namespace: Namespace holding it.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -433,17 +466,15 @@ def get_tkc_cluster(name: str, namespace: str, target: Optional[str] = None) -> 
 def get_tkc_available_versions(namespace: str, target: Optional[str] = None) -> dict:
     """[READ] List Kubernetes versions (TanzuKubernetesReleases) available on the Supervisor.
 
-    Returns {versions: [{name (release name), version (e.g.
-    'v1.28.4+vmware.1')}]} sorted newest first. If the TanzuKubernetesRelease
-    API is unavailable on this Supervisor, returns an empty versions list with
-    error and hint fields instead of raising. Read-only, no side effects. Call
-    this before create_tkc_cluster or upgrade_tkc_cluster to pick a valid
+    Returns {versions: [{name, version, e.g. 'v1.28.4+vmware.1'}]}, newest
+    first. If the TanzuKubernetesRelease API is unavailable it returns an
+    empty versions list with error and hint rather than raising. Call this
+    before create_tkc_cluster or upgrade_tkc_cluster to pick a valid
     k8s_version.
 
     Args:
         namespace: vSphere Namespace used to reach the Supervisor K8s API.
-        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
-            use the default target defined in that file.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -480,22 +511,23 @@ def create_tkc_cluster(
     dry_run: bool = True,
     target: Optional[str] = None,
 ) -> dict:
-    """[WRITE] Create a TanzuKubernetesCluster.
+    """[WRITE] Create a TanzuKubernetesCluster in a vSphere Namespace.
 
-    IMPORTANT: dry_run=True by default — returns YAML plan. Set dry_run=False to apply.
-
-    Workflow: call get_tkc_available_versions first to find valid k8s_version,
-    call list_vm_classes to find valid vm_class.
+    A dry run unless you pass dry_run=False; it then returns {name, namespace,
+    status: "creating", yaml} and provisions in the background — poll
+    get_tkc_cluster until phase is running. Call get_tkc_available_versions
+    for k8s_version and list_vm_classes for vm_class first.
 
     Args:
         name: Cluster name.
-        namespace: vSphere Namespace.
-        k8s_version: K8s version (e.g. 'v1.28.4+vmware.1').
-        vm_class: VM class for nodes (e.g. 'best-effort-large').
+        namespace: Must already exist (see list_namespaces).
+        k8s_version: e.g. 'v1.28.4+vmware.1'.
+        vm_class: Node sizing, e.g. 'best-effort-large'.
         control_plane_count: 1 or 3.
-        worker_count: Number of worker nodes (>= 1).
-        storage_class: Storage class name.
-        dry_run: Return YAML plan without applying (default: True).
+        worker_count: Worker nodes (>= 1).
+        storage_class: Storage class.
+        dry_run: YAML plan only (default: True).
+        target: vCenter in config.yaml; omit for the default.
     """
     from vmware_vks.ops import tkc as _tkc
     t = target or "default"
@@ -515,7 +547,14 @@ def create_tkc_cluster(
                 parameters=params,
                 result=f"error: {sanitize(str(e), 200)}",
             )
-        return {"error": _safe_error(e, "create_tkc_cluster")}
+        return {
+            "error": _safe_error(e, "create_tkc_cluster"),
+            "hint": (
+                "Verify k8s_version with get_tkc_available_versions and "
+                "vm_class with list_vm_classes; the namespace must already "
+                "exist (list_namespaces)."
+            ),
+        }
     if not dry_run:
         _audit.log(
             target=t, operation="create_tkc_cluster",
@@ -537,23 +576,18 @@ def scale_tkc_cluster(
 ) -> dict:
     """[WRITE] Scale the worker node count of an existing TanzuKubernetesCluster (TKC).
 
-    Asynchronous: patches the cluster spec and returns immediately with
-    status "scaling" — node provisioning or removal continues in the
-    background; poll get_tkc_cluster to watch progress. Scales workers only
-    (control plane is unchanged); use upgrade_tkc_cluster to change the K8s
-    version instead. Not destructive, but reducing worker_count drains the
-    removed nodes. Audited to ~/.vmware/audit.db (SQLite) and
-    ~/.vmware-vks/audit.log (JSON Lines).
+    Asynchronous: returns {name, namespace, pool, worker_count, status:
+    "scaling"} immediately — poll get_tkc_cluster to watch nodes appear or
+    drain. Scales workers only; use upgrade_tkc_cluster instead for the K8s
+    version. Not destructive, but lowering worker_count drains removed nodes.
 
     Args:
-        name: TKC cluster name (discover via list_tkc_clusters).
-        namespace: vSphere Namespace containing the cluster.
-        worker_count: Desired total worker node count, integer >= 1 (values
-            below 1 are rejected with an error).
-        pool_name: Node pool (machineDeployment) to scale. Omit to scale the
-            first existing pool. Other pools are always preserved.
-        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
-            use the default target defined in that file.
+        name: Cluster name (via list_tkc_clusters).
+        namespace: Namespace holding it.
+        worker_count: Desired total, integer >= 1 (below 1 is rejected).
+        pool_name: Node pool (machineDeployment). Omit for the first;
+            other pools are always preserved.
+        target: vCenter in config.yaml; omit for the default.
     """
     from vmware_vks.ops import tkc as _tkc
     t = target or "default"
@@ -567,7 +601,13 @@ def scale_tkc_cluster(
         _audit.log(target=t, operation="scale_tkc_cluster",
                    resource=f"{namespace}/{name}", parameters=params,
                    result=f"error: {sanitize(str(e), 200)}")
-        return {"error": _safe_error(e, "scale_tkc_cluster")}
+        return {
+            "error": _safe_error(e, "scale_tkc_cluster"),
+            "hint": (
+                "Run get_tkc_cluster for the cluster's current phase and node "
+                "pools."
+            ),
+        }
     _audit.log(target=t, operation="scale_tkc_cluster",
                resource=f"{namespace}/{name}", parameters=params,
                result="success")
@@ -579,12 +619,18 @@ def scale_tkc_cluster(
 def upgrade_tkc_cluster(
     name: str, namespace: str, k8s_version: str, target: Optional[str] = None
 ) -> dict:
-    """[WRITE] Upgrade TKC cluster to a new K8s version.
+    """[WRITE] Upgrade a TKC cluster to a new Kubernetes version.
+
+    Returns {name, namespace, new_version, status: "upgrading"}. Asynchronous
+    and irreversible — Kubernetes cannot be downgraded, so poll
+    get_tkc_cluster until phase is running. There is no dry run. Use this only
+    for the K8s version; prefer scale_tkc_cluster for node counts.
 
     Args:
-        name: TKC cluster name.
-        namespace: vSphere Namespace.
-        k8s_version: Target K8s version (use get_tkc_available_versions to list).
+        name: Cluster name (via list_tkc_clusters).
+        namespace: Namespace holding it.
+        k8s_version: Target version from get_tkc_available_versions.
+        target: vCenter in config.yaml; omit for the default.
     """
     from vmware_vks.ops import tkc as _tkc
     t = target or "default"
@@ -595,7 +641,14 @@ def upgrade_tkc_cluster(
         _audit.log(target=t, operation="upgrade_tkc_cluster",
                    resource=f"{namespace}/{name}", parameters={"k8s_version": k8s_version},
                    result=f"error: {sanitize(str(e), 200)}")
-        return {"error": _safe_error(e, "upgrade_tkc_cluster")}
+        return {
+            "error": _safe_error(e, "upgrade_tkc_cluster"),
+            "hint": (
+                "Run get_tkc_available_versions for the versions this "
+                "Supervisor offers, and get_tkc_cluster for the cluster's "
+                "current phase."
+            ),
+        }
     _audit.log(target=t, operation="upgrade_tkc_cluster",
                resource=f"{namespace}/{name}", parameters={"k8s_version": k8s_version},
                result="success")
@@ -612,17 +665,21 @@ def delete_tkc_cluster(
     force: bool = False,
     target: Optional[str] = None,
 ) -> dict:
-    """[WRITE] Delete a TKC cluster.
+    """[WRITE] Delete a TKC cluster and all of its nodes.
 
-    SAFETY: Rejects if Deployments/StatefulSets are running (unless force=True).
-    IMPORTANT: dry_run=True by default — set dry_run=False AND confirmed=True to delete.
+    Returns {name, namespace, status: "deleting"}, or a preview by default.
+    SAFETY: refused while Deployments/StatefulSets run, unless force=True. A
+    dry run unless you pass dry_run=False AND confirmed=True. Irreversible —
+    use scale_tkc_cluster instead for fewer nodes. Empty a namespace of TKC
+    clusters before delete_namespace accepts it.
 
     Args:
-        name: TKC cluster name.
-        namespace: vSphere Namespace.
-        confirmed: Must be True to proceed (safety gate).
-        dry_run: Preview without deleting (default: True).
-        force: Skip workload check (dangerous).
+        name: Cluster name (via list_tkc_clusters).
+        namespace: Namespace holding it.
+        confirmed: Must be True to proceed.
+        dry_run: Preview only (default: True).
+        force: Skip the workload check (dangerous).
+        target: vCenter in config.yaml; omit for the default.
     """
     from vmware_vks.ops import tkc as _tkc
     t = target or "default"
@@ -636,7 +693,13 @@ def delete_tkc_cluster(
             _audit.log(target=t, operation="delete_tkc_cluster",
                        resource=f"{namespace}/{name}", parameters={"force": force},
                        result=f"error: {sanitize(str(e), 200)}")
-        return {"error": _safe_error(e, "delete_tkc_cluster")}
+        return {
+            "error": _safe_error(e, "delete_tkc_cluster"),
+            "hint": (
+                "Run get_tkc_cluster for the cluster's phase and running "
+                "workloads, or list_tkc_clusters to confirm name and namespace."
+            ),
+        }
     if not dry_run and confirmed:
         _audit.log(target=t, operation="delete_tkc_cluster",
                    resource=f"{namespace}/{name}", parameters={"force": force},
@@ -651,16 +714,16 @@ def delete_tkc_cluster(
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
 @vmware_tool(risk_level="low")
 def get_supervisor_kubeconfig(namespace: str, target: Optional[str] = None) -> dict:
-    """[READ] Get kubeconfig for the Supervisor K8s API endpoint.
+    """[READ] Get a kubeconfig for the Supervisor K8s API endpoint.
 
-    Security: The returned kubeconfig contains a short-lived session token.
-    Treat the raw output as a credential — do not log or share.
+    Returns {namespace, kubeconfig} as a YAML string. Use this for
+    Supervisor-level access; use get_tkc_kubeconfig instead to reach workloads
+    inside a TKC cluster. Security: it carries a short-lived session token —
+    treat it as a credential, do not log or share.
 
     Args:
-        namespace: vSphere Namespace (context for the kubeconfig).
-        target: vCenter target name.
-
-    Returns: kubeconfig YAML string.
+        namespace: vSphere Namespace to set as the kubeconfig context.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -679,17 +742,20 @@ def get_tkc_kubeconfig(
     output_path: Optional[str] = None,
     target: Optional[str] = None,
 ) -> dict:
-    """[READ] Get kubeconfig for a TKC cluster.
+    """[READ] Get a kubeconfig for one TKC cluster.
 
-    Security: The returned kubeconfig contains a short-lived session token.
-    Prefer writing to file (output_path) over returning inline to reduce
-    credential exposure in agent context.
+    Returns {cluster, kubeconfig}, or {cluster, written_to} when
+    output_path is given. Run list_tkc_clusters first for name and namespace;
+    use get_supervisor_kubeconfig instead for Supervisor-level access.
+    Security: it carries a short-lived session token — always prefer
+    output_path so the credential never enters agent context.
 
     Args:
         name: TKC cluster name.
-        namespace: vSphere Namespace.
-        output_path: Write to file if provided (e.g. '~/.kube/my-cluster.yaml').
-                     Returns kubeconfig string if not specified.
+        namespace: Namespace holding it.
+        output_path: File to write, e.g. '~/.kube/my.yaml'. Omit to return
+            the kubeconfig inline.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         from pathlib import Path
@@ -706,18 +772,15 @@ def get_tkc_kubeconfig(
 def get_harbor_info(target: Optional[str] = None) -> dict:
     """[READ] Get status of the embedded Harbor container registry on the Supervisor.
 
-    Returns {registries: [...]} where each entry has id (registry ID),
-    cluster (Supervisor cluster MoRef), version, url (UI access URL),
-    status (registry health, e.g. RUNNING), and storage_used_mb. Status and
-    storage come from a per-registry detail call and are null if that call
-    fails. If Harbor is
-    not enabled on this Supervisor, returns {error, hint} instead of raising.
-    Read-only, no side effects. Use this to check registry health or find the
-    registry URL before pushing images; it does not list repositories or images.
+    Returns {registries: [{id, cluster (Supervisor MoRef), version, url,
+    status, storage_used_mb}]}; status and storage come from a detail call and
+    are null if it fails. If Harbor is not enabled it returns
+    {error, hint} rather than raising. Use it to check registry health or find
+    the push URL — it does not list repositories or images. Run
+    check_vks_compatibility first if the Supervisor may be down.
 
     Args:
-        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
-            use the default target defined in that file.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
@@ -732,19 +795,17 @@ def get_harbor_info(target: Optional[str] = None) -> dict:
 def list_namespace_storage_usage(namespace: str, target: Optional[str] = None) -> dict:
     """[READ] List PersistentVolumeClaims and storage usage inside one vSphere Namespace.
 
-    Connects to the Supervisor K8s API and returns the family list envelope:
+    Via the Supervisor K8s API. Returns the family list envelope:
     {namespace, items: [{name, namespace, status (Bound / Pending / Lost),
-    capacity (e.g. '10Gi'), storage_class}], returned, limit, total,
-    truncated, hint}. Every PVC is returned in one call, so total is the real
-    count and truncated is always False.
-    Read-only, no side effects. Use list_namespaces to find namespace names;
-    use list_supervisor_storage_policies for policy-level (not PVC-level)
-    information.
+    capacity ('10Gi'), storage_class}], returned, limit, total,
+    truncated, hint}. Every PVC comes back in one call, so truncated is always
+    False. Run list_namespaces first for the namespace; use
+    list_supervisor_storage_policies instead for policy-level rather than
+    PVC-level information.
 
     Args:
-        namespace: vSphere Namespace name to inspect.
-        target: Name of a vCenter entry in ~/.vmware-vks/config.yaml. Omit to
-            use the default target defined in that file.
+        namespace: Namespace to inspect.
+        target: vCenter in config.yaml; omit for the default.
     """
     try:
         si = _get_si(target)
