@@ -46,7 +46,9 @@ mkdir -p ~/.vmware-vks
 cp config.example.yaml ~/.vmware-vks/config.yaml
 # 编辑 config.yaml，填入 vCenter 主机和用户名
 
-echo "VMWARE_MY_VCENTER_PASSWORD=your_password" > ~/.vmware-vks/.env
+# 每个 target 一个密码环境变量，变量名由 config.yaml 里的 target 名派生：
+# target "vcenter01"（config.example.yaml 自带的那个）-> VMWARE_VKS_VCENTER01_PASSWORD
+echo "VMWARE_VKS_VCENTER01_PASSWORD=your_password" > ~/.vmware-vks/.env
 chmod 600 ~/.vmware-vks/.env
 
 # 验证

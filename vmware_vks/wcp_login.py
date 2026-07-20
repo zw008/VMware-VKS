@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
-from vmware_vks.errors import VksApiError
+from vmware_vks.errors import VksApiError, connection_failure_message
 
 _log = logging.getLogger("vmware-vks.wcp_login")
 
@@ -50,12 +50,18 @@ def wcp_login(
     username: str,
     password: str,
     verify_ssl: bool = True,
+    target_name: str = "",
 ) -> str:
     """Login to the Supervisor via POST /wcp/login and return the JWT.
 
     Uses HTTP Basic auth (vCenter SSO credentials). The returned
     ``session_id`` JWT is the Kubernetes bearer token. Cached per
     (host, username) for ~8h; call invalidate_wcp_token on 401.
+
+    Args:
+        target_name: config target this host came from. Named in the
+            connection-failure message so the operator knows which entry in
+            config.yaml to edit; the resolved host is deliberately not.
     """
     key = (host, username)
     cached = _token_cache.get(key)
@@ -97,10 +103,11 @@ def wcp_login(
             status_code=e.code,
         ) from e
     except (urllib.error.URLError, TimeoutError, OSError) as e:
+        # Authored message only. This error type passes through _safe_error
+        # verbatim, and the raw text of a TLS failure quotes the certificate
+        # subject while a DNS failure quotes the host it could not resolve.
         raise VksApiError(
-            f"Supervisor login failed: {e}. Check that {url} is reachable from "
-            f"here and that Workload Management is enabled; run 'vmware-vks check' "
-            f"to test vCenter reachability and TLS.",
+            f"Supervisor login failed. {connection_failure_message(e, target_name)}"
         ) from e
 
     token = data.get("session_id") if isinstance(data, dict) else None
@@ -140,6 +147,7 @@ def get_wcp_token(si: "ServiceInstance") -> str:
         target.username,
         target.password,
         verify_ssl=get_verify_ssl(si),
+        target_name=target.name,
     )
 
 

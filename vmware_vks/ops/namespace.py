@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 from vmware_policy import paginated, sanitize
 
+from vmware_vks.errors import VksSafetyError, cause_summary
 from vmware_vks.ops.supervisor import _rest_delete, _rest_get, _rest_patch, _rest_post
 
 _log = logging.getLogger("vmware-vks.ops.namespace")
@@ -30,11 +31,11 @@ def _list_tkc_in_namespace(si: ServiceInstance, namespace: str) -> list[str]:
         result = list_tkc_clusters(si, namespace=namespace)
     except Exception as e:
         _log.warning("Could not verify TKC clusters in '%s': %s", namespace, e)
-        raise RuntimeError(
-            f"Cannot verify TKC clusters in '{namespace}': {e}. The delete is "
-            f"refused rather than risking orphaned clusters. Run 'vmware-vks check' "
+        raise VksSafetyError(
+            f"Cannot verify TKC clusters in '{namespace}' — the delete is "
+            f"refused rather than risk orphaning them. Run 'vmware-vks check' "
             f"to diagnose the connection, then list_tkc_clusters to confirm the "
-            f"namespace is empty before retrying."
+            f"namespace is empty. Cause: {cause_summary(e)}"
         ) from e
     return [c["name"] for c in result.get("items", [])]
 
@@ -133,11 +134,11 @@ def delete_namespace(
     """
     tkc_clusters = _list_tkc_in_namespace(si, name)
     if tkc_clusters:
-        raise RuntimeError(
-            f"Cannot delete namespace '{name}': "
-            f"TKC clusters still exist: {', '.join(tkc_clusters)}. "
-            f"Run delete_tkc_cluster for each of those, then retry "
-            f"delete_namespace."
+        raise VksSafetyError(
+            f"Cannot delete namespace '{name}': {len(tkc_clusters)} TKC "
+            f"cluster(s) still exist inside it. Run delete_tkc_cluster for each "
+            f"of those, then retry delete_namespace. Clusters: "
+            f"{', '.join(tkc_clusters)}."
         )
 
     if dry_run:

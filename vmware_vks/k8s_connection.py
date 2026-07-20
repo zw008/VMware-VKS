@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
+from vmware_vks.errors import VksApiError, VksError
+
 _log = logging.getLogger("vmware-vks.k8s_connection")
 
 # NOTE: the vCenter-host helper lives in ops/supervisor._vcenter_host — the
@@ -54,11 +56,11 @@ def _resolve_supervisor_endpoint(si: ServiceInstance) -> str:
             states = ", ".join(
                 f"{c.get('cluster')}={c.get('config_status')}" for c in clusters
             ) or "none"
-            raise RuntimeError(
-                f"no Supervisor cluster is in config_status RUNNING (found: "
-                f"{states}). Run check_vks_compatibility to confirm this vCenter "
-                f"supports VKS, then get_supervisor_status to watch the cluster "
-                f"come up; retry once one reports RUNNING."
+            raise VksApiError(
+                f"No Supervisor cluster is in config_status RUNNING. Run "
+                f"check_vks_compatibility to confirm this vCenter supports VKS, "
+                f"then get_supervisor_status to watch the cluster come up; retry "
+                f"once one reports RUNNING. Found: {states}."
             )
         cluster_data = _rest_get(
             si,
@@ -66,16 +68,22 @@ def _resolve_supervisor_endpoint(si: ServiceInstance) -> str:
         )
         api_endpoint = cluster_data.get("api_server_cluster_endpoint", "")
         if not api_endpoint:
-            raise RuntimeError(
+            raise VksApiError(
                 f"Supervisor cluster '{running[0]['cluster']}' reports RUNNING but "
                 f"published no api_server_cluster_endpoint — its control plane is "
                 f"still coming up. Run get_supervisor_status to check, then retry."
             )
+    except VksError:
+        # Already authored for an agent (including the two above, and the REST
+        # layer's translated errors) — re-wrapping would bury the specific
+        # remedy under a generic one.
+        raise
     except Exception as e:
-        raise RuntimeError(
-            f"Could not retrieve the Supervisor API endpoint from '{host}': {e}. "
-            f"Run 'vmware-vks check' to verify the vCenter connection, then "
-            f"check_vks_compatibility to confirm Workload Management is enabled."
+        raise VksApiError(
+            f"Could not retrieve the Supervisor API endpoint from vCenter "
+            f"({type(e).__name__}). Run 'vmware-vks check' to verify the vCenter "
+            f"connection, then check_vks_compatibility to confirm Workload "
+            f"Management is enabled."
         ) from e
 
     _endpoint_cache[host] = api_endpoint

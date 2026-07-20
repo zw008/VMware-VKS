@@ -171,9 +171,9 @@ in the MCP server's start-up log.
   precedence chain, and how to verify.
 - **references/capabilities.md** — which tools the gate withholds.
 
-### Added — `doctor` reports the read-only state
+### Added — the doctor reports the read-only state
 
-`vmware-vks doctor` now shows whether read-only mode is on, **which** of the three
+`vmware-vks check` (which runs the doctor) now shows whether read-only mode is on, **which** of the three
 switches decided it, and the value as written. A typo'd value (`ture`) is called
 out as a typo rather than reported as a confident ON — it resolves to on, which is
 fail-closed but almost never what was meant.

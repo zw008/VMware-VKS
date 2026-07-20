@@ -110,10 +110,14 @@ def test_wcp_login_404_raises_teaching_error_and_invalidates():
 def test_wcp_login_timeout_raises_teaching_error():
     with patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
         with pytest.raises(VksApiError) as exc_info:
-            wcp_login.wcp_login("vc.example.com", "admin", "pw")
+            wcp_login.wcp_login(
+                "vc.example.com", "admin", "pw", target_name="vcenter01"
+            )
     msg = str(exc_info.value)
-    assert "reachable" in msg
-    assert "https://vc.example.com/wcp/login" in msg
+    # Names the config entry to edit and the setting to change, not the host.
+    assert "vcenter01" in msg
+    assert "verify_ssl: false" in msg
+    assert "vmware-vks check" in msg
 
 
 def test_wcp_login_403_raises_teaching_error():
@@ -151,8 +155,32 @@ def test_wcp_login_unreachable_raises_teaching_error():
         "urllib.request.urlopen",
         side_effect=urllib.error.URLError("connection refused"),
     ):
-        with pytest.raises(VksApiError, match="reachable"):
+        with pytest.raises(VksApiError, match="Cannot reach"):
             wcp_login.wcp_login("vc.example.com", "admin", "pw")
+
+
+def test_wcp_login_transport_failure_does_not_quote_the_raw_error():
+    """A TLS failure's raw text names the certificate subject and the host.
+
+    VksApiError passes through _safe_error verbatim, so this message is
+    authored rather than interpolated — the class name is kept because it is
+    what distinguishes TLS from DNS from timeout, and that picks the remedy.
+    """
+    tls = ssl.SSLCertVerificationError(
+        1,
+        "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname "
+        "mismatch, certificate is not valid for 'vc-prod.internal'",
+    )
+    with patch("urllib.request.urlopen", side_effect=tls):
+        with pytest.raises(VksApiError) as exc_info:
+            wcp_login.wcp_login(
+                "vc-prod.internal", "admin", "pw", target_name="prod"
+            )
+    msg = str(exc_info.value)
+    assert "CERTIFICATE_VERIFY_FAILED" not in msg
+    assert "vc-prod.internal" not in msg
+    assert "SSLCertVerificationError" in msg
+    assert "verify_ssl: false" in msg
 
 
 def test_wcp_login_missing_session_id_raises():

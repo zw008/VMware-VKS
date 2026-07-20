@@ -1,8 +1,13 @@
-"""Centralized API error type with teaching hints (CLAUDE.md 踩坑 #37).
+"""Centralized error types with teaching hints (CLAUDE.md 踩坑 #37).
 
 All REST (vCenter namespace-management) and Kubernetes (Supervisor / TKC)
 failures are translated into VksApiError at the connection layer, so users
 and agents see actionable guidance instead of raw tracebacks.
+
+Everything this skill raises deliberately derives from :class:`VksError`, and
+that is the single entry the MCP layer's ``_safe_error`` allowlists. Raising a
+bare ``RuntimeError`` for an authored message silently discards it — the agent
+sees ``"RuntimeError: operation failed."`` instead.
 """
 from __future__ import annotations
 
@@ -12,16 +17,74 @@ from typing import Optional
 TRANSIENT_STATUS_CODES = (502, 503, 504)
 
 
-class VksApiError(RuntimeError):
-    """API call failed — carries the HTTP status code and a teaching hint.
+class VksError(RuntimeError):
+    """Base for every failure this skill raises on purpose.
 
     Subclasses RuntimeError so existing ``except RuntimeError`` paths and
-    tests keep working.
+    tests keep working. This is the type the MCP layer's ``_safe_error``
+    passes through verbatim, so every message raised under it is written for
+    an agent to read: name the corrected next step, and never interpolate a
+    raw exception, a resolved host:port or a certificate subject — chain the
+    cause instead and let the server log carry the detail.
+
+    Put the remedy before any interpolated value: the message is capped at
+    300 characters on the way out, so whatever comes last is what truncates.
     """
+
+
+class VksApiError(VksError):
+    """API call failed — carries the HTTP status code and a teaching hint."""
 
     def __init__(self, message: str, status_code: Optional[int] = None) -> None:
         super().__init__(message)
         self.status_code = status_code
+
+
+class VksSafetyError(VksError):
+    """A guard refused the operation; nothing was changed.
+
+    Distinct from :class:`VksApiError` — no API call failed. The remedy is to
+    satisfy the precondition the message names (empty the namespace, drain
+    the cluster, pass ``force=True``), not to retry.
+    """
+
+
+def cause_summary(exc: BaseException) -> str:
+    """Describe ``exc`` as a nested cause, quoting it only if we authored it.
+
+    Applies ``_safe_error``'s rule one layer down: a :class:`VksError` message
+    was written for an agent to read, so it is quotable; anything else is raw
+    upstream text that can carry response bodies, hostnames or certificate
+    subjects, so only its class name is used.
+
+    ``ConfigError`` is quoted for the same reason it is on ``_safe_error``'s
+    passthrough list: its text *is* the remedy. A missing password surfaces
+    here through the delete guards' credential read, and reducing it to a bare
+    class name would answer the family's most common first-run failure with a
+    name the operator cannot act on. Imported inside the function to keep this
+    module a leaf — ``config`` runs .env loading at import time.
+    """
+    from vmware_vks.config import ConfigError
+
+    authored = isinstance(exc, (VksError, ConfigError))
+    return str(exc) if authored else type(exc).__name__
+
+
+def connection_failure_message(exc: BaseException, target: str = "") -> str:
+    """Authored message for a transport failure, safe to show an agent.
+
+    The raw text of a TLS failure quotes the certificate subject and a DNS
+    failure quotes the host it could not resolve, so only the exception's
+    class name is used — enough to tell TLS from DNS from timeout, which is
+    the distinction that picks the remedy. The full detail reaches the server
+    log through the chained cause.
+    """
+    where = f"target '{target}'" if target else "the configured vCenter"
+    return (
+        f"Cannot reach {where} ({type(exc).__name__}). Run 'vmware-vks check' "
+        f"to diagnose. If this vCenter uses a self-signed certificate, set "
+        f"verify_ssl: false on that target in ~/.vmware-vks/config.yaml."
+    )
 
 
 def rest_hint_for_status(status_code: Optional[int]) -> str:

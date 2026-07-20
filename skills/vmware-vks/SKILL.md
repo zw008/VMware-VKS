@@ -40,7 +40,7 @@ AI-powered VMware vSphere Kubernetes Service (VKS) management — 20 MCP tools.
 
 ```bash
 uv tool install vmware-vks
-vmware-vks doctor
+vmware-vks check
 ```
 
 ## When to Use This Skill

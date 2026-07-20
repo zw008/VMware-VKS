@@ -5,10 +5,17 @@ Layer 2 (kubernetes client) is handled separately in vmware_vks.k8s_connection.
 from __future__ import annotations
 
 import atexit
+import socket
 import ssl
 from typing import TYPE_CHECKING
 
-from vmware_vks.config import AppConfig, TargetConfig, load_config
+from vmware_vks.config import (
+    CONFIG_FILE,
+    AppConfig,
+    ConfigError,
+    TargetConfig,
+    load_config,
+)
 
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
@@ -110,14 +117,54 @@ class ConnectionManager:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
 
-        si = SmartConnect(
-            host=target.host,
-            user=target.username,
-            pwd=target.password,
-            port=target.port,
-            sslContext=context,
-            disableSslCertValidation=not target.verify_ssl,
-        )
+        # Resolve credentials BEFORE the try block. Both are properties, and
+        # the missing-password one raises ConfigError — an OSError subclass the
+        # handlers below would otherwise relabel as a TLS/DNS failure, burying
+        # this family's most common first-run error behind the wrong remedy.
+        # Read adjacently so a sidecar rotating both halves cannot split them.
+        user, pwd = target.username, target.password
+
+        try:
+            si = SmartConnect(
+                host=target.host,
+                user=user,
+                pwd=pwd,
+                port=target.port,
+                sslContext=context,
+                disableSslCertValidation=not target.verify_ssl,
+            )
+        # These three carry the certificate subject, the unresolved hostname
+        # and the full host:port respectively. _safe_error no longer passes
+        # bare OSError through, so an agent would see only the class name —
+        # translate to authored text that names the target and the setting to
+        # change, and never interpolates the original exception. The raw detail
+        # stays on __cause__, which only reaches the server-side log.
+        except ssl.SSLError as exc:
+            raise ConfigError(
+                f"TLS verification failed for target '{target.name}' — set "
+                f"verify_ssl: false on that target in {CONFIG_FILE} if it uses a "
+                f"self-signed certificate, or install its CA on this host."
+            ) from exc
+        except socket.gaierror as exc:
+            raise ConfigError(
+                f"Could not resolve the host configured for target '{target.name}' "
+                f"— check that target's 'host' value in {CONFIG_FILE} for a typo "
+                f"or a DNS suffix this machine cannot resolve."
+            ) from exc
+        except OSError as exc:
+            # ConfigError, like the two branches above it. Raising the builtin
+            # ConnectionError here forced it onto the passthrough allowlist to
+            # let this authored text through — and that same entry then passed
+            # urllib3's own ConnectionError, whose text is
+            # "HTTPSConnectionPool(host='vc.internal', port=443)". One type,
+            # two provenances: an allowlist cannot tell them apart, so the
+            # authored message gets its own type instead.
+            raise ConfigError(
+                f"Could not reach target '{target.name}' — check that the vCenter "
+                f"host is up and that its 'host' and 'port' in {CONFIG_FILE} are "
+                f"reachable from this machine."
+            ) from exc
+
         # Stash verify_ssl in module dict (NOT on si — pyVmomi 8.x rejects
         # setattr on ManagedObject, see 踩坑 #32). Consumers read via
         # get_verify_ssl(si).

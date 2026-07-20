@@ -114,6 +114,7 @@ def _wcp_login_step(si: "ServiceInstance") -> tuple[Optional[str], tuple[Step, .
             target.username,
             target.password,
             verify_ssl=get_verify_ssl(si),
+            target_name=target.name,
         )
     except VksApiError as e:
         code = e.status_code

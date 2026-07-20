@@ -14,11 +14,12 @@ mkdir -p ~/.vmware-vks
 cp config.example.yaml ~/.vmware-vks/config.yaml
 # Edit config.yaml with your vCenter/ESXi host and username
 
-echo "VMWARE_VKS_MY_VCENTER_PASSWORD=your_password" > ~/.vmware-vks/.env
+# Named after the target in config.yaml: "vcenter01" -> VMWARE_VKS_VCENTER01_PASSWORD
+echo "VMWARE_VKS_VCENTER01_PASSWORD=your_password" > ~/.vmware-vks/.env
 chmod 600 ~/.vmware-vks/.env
 
 # Verify setup
-vmware-vks doctor
+vmware-vks check
 ```
 
 ## Agent Configuration Files

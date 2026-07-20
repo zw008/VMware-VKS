@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
+from vmware_vks.errors import VksApiError
+
 _log = logging.getLogger("vmware-vks.ops.kubeconfig")
 
 
@@ -50,7 +52,7 @@ def build_tkc_kubeconfig(
         port = control_plane_endpoint.get("port", 6443)
 
         if not host:
-            raise RuntimeError(
+            raise VksApiError(
                 f"TKC cluster '{cluster_name}' in namespace '{namespace}' has no "
                 f"control plane endpoint yet — it is not fully provisioned. Run "
                 f"get_tkc_cluster to check its phase, and retry once it reports "

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 from vmware_policy import paginated, sanitize
 
-from vmware_vks.errors import VksApiError
+from vmware_vks.errors import VksApiError, VksSafetyError, cause_summary
 
 _log = logging.getLogger("vmware-vks.ops.tkc")
 
@@ -516,11 +516,11 @@ def _check_running_workloads(si: ServiceInstance, name: str, namespace: str) -> 
             api_client.close()
     except Exception as e:
         _log.warning("Could not verify workloads in cluster '%s': %s", name, e)
-        raise RuntimeError(
-            f"Cannot verify workloads in TKC cluster '{name}': {e}. The delete is "
-            f"refused rather than risking running workloads. Run 'vmware-vks check' "
+        raise VksSafetyError(
+            f"Cannot verify workloads in TKC cluster '{name}' — the delete is "
+            f"refused rather than risk running workloads. Run 'vmware-vks check' "
             f"to diagnose the connection, or re-run delete_tkc_cluster with "
-            f"force=True to skip the workload check."
+            f"force=True to skip the workload check. Cause: {cause_summary(e)}"
         ) from e
 
 
@@ -541,13 +541,12 @@ def delete_tkc_cluster(
     if not force:
         workloads = _check_running_workloads(si, name, namespace)
         if workloads:
-            raise RuntimeError(
-                f"Cannot delete TKC cluster '{name}': "
-                f"{len(workloads)} running workload(s) detected: "
-                f"{[w['kind'] + '/' + w['name'] for w in workloads[:5]]}. "
-                f"Remove them first — get_tkc_kubeconfig gives you a kubeconfig to "
-                f"drain the cluster — or re-run delete_tkc_cluster with force=True "
-                f"to delete anyway."
+            raise VksSafetyError(
+                f"Cannot delete TKC cluster '{name}': {len(workloads)} running "
+                f"workload(s) detected. Remove them first — get_tkc_kubeconfig "
+                f"gives you a kubeconfig to drain the cluster — or re-run "
+                f"delete_tkc_cluster with force=True to delete anyway. Running: "
+                f"{', '.join(w['kind'] + '/' + w['name'] for w in workloads[:5])}."
             )
 
     if dry_run:

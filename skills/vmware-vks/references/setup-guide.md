@@ -95,7 +95,7 @@ For Claude Code / Cursor users who prefer structured tool calls, add to `~/.clau
       "args": ["mcp"],
       "env": {
         "VMWARE_VKS_CONFIG": "/Users/you/.vmware-vks/config.yaml",
-        "VMWARE_MYVENTER_PASSWORD": "your-password"
+        "VMWARE_VKS_VCENTER01_PASSWORD": "your-password"
       }
     }
   }
@@ -183,7 +183,7 @@ than serve write tools it promised to withhold. A misspelled value is handled di
 `VMWARE_READ_ONLY=ture` does not abort, it resolves to **on** with a warning, so a typo
 locks the deployment down instead of quietly leaving it open.
 
-**Verifying it took.** `vmware-vks doctor` reports the resolved state and which setting it
+**Verifying it took.** `vmware-vks check` reports the resolved state and which setting it
 came from — including the case where an unrecognised value enabled the mode by accident. The
 MCP server's start-up log additionally names every tool that was withheld.
 

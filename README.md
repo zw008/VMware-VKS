@@ -46,7 +46,9 @@ mkdir -p ~/.vmware-vks
 cp config.example.yaml ~/.vmware-vks/config.yaml
 # Edit config.yaml with your vCenter host and username
 
-echo "VMWARE_MY_VCENTER_PASSWORD=your_password" > ~/.vmware-vks/.env
+# One password env var per target, named after the target in config.yaml:
+# target "vcenter01" (the one config.example.yaml ships) -> VMWARE_VKS_VCENTER01_PASSWORD
+echo "VMWARE_VKS_VCENTER01_PASSWORD=your_password" > ~/.vmware-vks/.env
 chmod 600 ~/.vmware-vks/.env
 
 # Verify

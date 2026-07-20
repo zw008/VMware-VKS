@@ -1,4 +1,4 @@
-"""Tests for AuditLogger."""
+"""Tests for AuditLogger, and for what the central audit records on failure."""
 import json
 from unittest.mock import patch
 import pytest
@@ -78,3 +78,42 @@ def test_audit_log_appends(tmp_path):
     assert entry1["target"] == "vc1"
     assert entry2["target"] == "vc2"
     assert entry2["result"] == "failure"
+
+
+def test_returned_failure_is_audited_as_a_failure(monkeypatch):
+    """A tool that catches and returns must not be recorded as a success.
+
+    ``@vmware_tool`` marks a call failed when an exception reaches it, or when
+    the returned payload is the family's error envelope. Every tool in this
+    skill catches and returns ``{"error": ..., "hint": ...}``, which is that
+    envelope — so the audit row, the undo token and the circuit breaker all see
+    a failure without the skill having to report one. That is only true while
+    the payload stays dict-shaped: a tool that returned an error *string*
+    instead would be indistinguishable from a success, and would need an
+    explicit ``vmware_policy.report_tool_failure`` call.
+    """
+    from vmware_vks.mcp_server import server as srv
+
+    rows = []
+
+    class _Recorder:
+        def log(self, **kw):
+            rows.append(kw)
+
+    monkeypatch.setattr("vmware_policy.decorators.get_engine", lambda: _Recorder())
+    monkeypatch.setattr(
+        srv, "_get_si", lambda target=None: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+
+    result = srv.list_namespaces()
+
+    assert rows, "the call was never audited at all"
+    assert rows[0]["status"] == "error", (
+        f"a failed call was audited as {rows[0]['status']!r} — the undo token and "
+        "the circuit breaker read the same flag. A tool whose failure payload is "
+        "not the dict envelope must call vmware_policy.report_tool_failure."
+    )
+    assert isinstance(result, dict) and result["error"], (
+        "the failure payload must stay dict-shaped — that is what @vmware_tool "
+        "detects, and it is why this skill needs no report_tool_failure call"
+    )

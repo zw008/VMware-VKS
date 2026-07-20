@@ -19,10 +19,11 @@ if TYPE_CHECKING:
 
 from vmware_policy import paginated, sanitize
 
-from vmware_vks.connection import get_verify_ssl
+from vmware_vks.connection import get_target_config, get_verify_ssl
 from vmware_vks.errors import (
     TRANSIENT_STATUS_CODES,
     VksApiError,
+    connection_failure_message,
     rest_hint_for_status,
 )
 
@@ -38,6 +39,16 @@ _REST_TIMEOUT = 30
 
 def _vcenter_host(si: ServiceInstance) -> str:
     return si._stub.host.split(":")[0]
+
+
+def _target_name(si: ServiceInstance) -> str:
+    """Config target name behind this connection, or "" if it is unknown.
+
+    Used to name the target in a connection-failure message instead of the
+    resolved host — the operator edits the config entry, not the hostname.
+    """
+    target = get_target_config(si)
+    return target.name if target is not None else ""
 
 
 def _build_ssl_context(si: ServiceInstance) -> ssl.SSLContext:
@@ -93,10 +104,13 @@ def _rest_request(
                 raw = resp.read()
                 return json.loads(raw) if raw else None
         except urllib.error.HTTPError as e:
+            # Hint before detail: the whole message is capped at 300 chars on
+            # the way to an agent, so whatever comes last is what truncates —
+            # and the response body is the expendable half.
             detail = sanitize(e.read().decode(errors="replace"), 300)
             last_error = VksApiError(
-                f"REST {method} {path} failed ({e.code}): {detail}. "
-                f"{rest_hint_for_status(e.code)}",
+                f"REST {method} {path} failed ({e.code}). "
+                f"{rest_hint_for_status(e.code)} Detail: {detail}",
                 status_code=e.code,
             )
             last_error.__cause__ = e
@@ -106,10 +120,11 @@ def _rest_request(
                 continue
             raise last_error
         except (urllib.error.URLError, socket.timeout, TimeoutError, OSError) as e:
+            # Authored message only: the raw text of a TLS failure quotes the
+            # certificate subject and a DNS failure quotes the host, and this
+            # error type passes through _safe_error verbatim.
             last_error = VksApiError(
-                f"REST {method} {path} failed: cannot reach {host}: {e}. "
-                "Check network connectivity and that vCenter is up — run "
-                "'vmware-vks check' to diagnose.",
+                connection_failure_message(e, _target_name(si))
             )
             last_error.__cause__ = e
             if attempt + 1 < attempts:

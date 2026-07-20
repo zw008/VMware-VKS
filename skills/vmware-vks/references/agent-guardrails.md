@@ -70,7 +70,7 @@ read_only: true
 ```
 
 Precedence is per-skill env → family env → config file → off. The startup log
-lists exactly which tools were withheld, and `vmware-vks doctor` reports the
+lists exactly which tools were withheld, and `vmware-vks check` reports the
 resolved state and its source. An unparseable value (`VMWARE_READ_ONLY=ture`)
 enables read-only mode rather than silently ignoring the typo.
 

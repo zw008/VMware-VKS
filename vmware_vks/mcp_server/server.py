@@ -23,6 +23,7 @@ Source: https://github.com/zw008/VMware-VKS
 
 import logging
 import os
+import ssl
 from pathlib import Path
 from typing import Optional
 
@@ -35,9 +36,9 @@ from vmware_policy import (
     vmware_tool,
 )
 
-from vmware_vks.config import CONFIG_FILE, load_config
+from vmware_vks.config import CONFIG_FILE, ConfigError, load_config
 from vmware_vks.connection import ConnectionManager
-from vmware_vks.errors import VksApiError
+from vmware_vks.errors import VksError
 from vmware_vks.notify.audit import AuditLogger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vmware-vks.mcp")
@@ -51,29 +52,62 @@ def _safe_error(exc: Exception, tool: str) -> str:
 
     The rule is a property, not a list: every exception this skill raises on
     purpose passes through, and only genuinely unplanned ones are reduced. That
-    covers the builtin validation errors and ``VksApiError`` (already sanitized
-    at the connection layer).
+    is ``VksError`` — the base of every error this skill authors, including
+    ``VksApiError`` (already sanitized at the connection layer) and the safety
+    guards — plus the builtin validation errors and ``ConfigError``.
 
-    ``OSError`` is allowed because ``config.py`` raises exactly one — the
-    missing-password error, this family's most common first-run failure, whose
-    entire remedy is the env var name it carries. It also subsumes
-    ``FileNotFoundError``, ``PermissionError``, ``TimeoutError`` and
-    ``ConnectionError``, so exposure widens only to the remaining OS-level
-    subtypes.
+    ``ConfigError`` is ``config.py``'s missing-password error, this family's
+    most common first-run failure, whose entire remedy is the env var name it
+    carries. It is deliberately *not* bare ``OSError``: that also passes through
+    ``ssl.SSLCertVerificationError`` (quoting the certificate subject and
+    hostname), ``socket.gaierror`` (the host that failed to resolve) and
+    the full ``scheme://host:port/path``, none of which were written for an
+    agent to read. Every connection path translates them first — ``SmartConnect``
+    in ``connection.py``, and the REST and ``/wcp/login`` transports via
+    ``errors.connection_failure_message`` — so the diagnostic survives without
+    the raw text.
 
-    Bare ``RuntimeError`` deliberately stays out, even though ``VksApiError``
-    subclasses it: this skill raises eight authored ``RuntimeError`` messages in
-    the ops layer, but the same type also carries raw text from callers that
-    never intended it to be read by an agent. Admitting the base class to reach
-    those eight would admit the raw ones too.
+    ``ConnectionError`` is deliberately **not** here. The connection layer used
+    to raise the builtin for its authored "could not reach" message, which meant
+    allowlisting the type — and that same entry then passed urllib3's own
+    ``ConnectionError``, whose text is
+    ``HTTPSConnectionPool(host='vc.internal', port=443)``. One type arriving from
+    two sources is something an allowlist cannot separate, so the authored
+    message now raises ``ConfigError`` like its TLS and DNS siblings.
+
+    ``ssl.SSLError`` is reduced *ahead* of the allowlist rather than left off
+    it, because an allowlist structurally cannot express "not this one":
+    ``ssl.SSLCertVerificationError`` subclasses ``ValueError`` as well as
+    ``OSError``, and ``ValueError`` predates all of this — so narrowing
+    ``OSError`` alone would have left the certificate subject and the hostname
+    reaching the agent exactly as before. Only ``ssl.SSLError`` needs the
+    explicit reduction: ``socket.gaierror`` and ``ConnectionRefusedError``
+    have ``OSError`` as their only base and are genuinely withheld by the
+    narrowing itself.
+
+    Bare ``RuntimeError`` stays out, even though ``VksError`` subclasses it: the
+    same type carries raw text from callers that never intended it to be read
+    by an agent, so admitting the base class would admit those too.
 
     Anything else is reduced to its type — an unplanned exception's text was
     written for a developer reading a traceback, not for an agent choosing what
     to do next, and it is the one that can carry credentials.
     """
     logger.error("Tool %s failed", tool, exc_info=True)
+    if isinstance(exc, ssl.SSLError):
+        # Ahead of the allowlist on purpose — SSLCertVerificationError is also
+        # a ValueError, so no allowlist edit can withhold it.
+        return f"{type(exc).__name__}: operation failed."
     if isinstance(
-        exc, (VksApiError, ValueError, FileNotFoundError, KeyError, PermissionError, OSError)
+        exc,
+        (
+            VksError,
+            ValueError,
+            FileNotFoundError,
+            KeyError,
+            PermissionError,
+                ConfigError,
+        ),
     ):
         return sanitize(str(exc), 300)
     return f"{type(exc).__name__}: operation failed."
@@ -604,8 +638,9 @@ def scale_tkc_cluster(
         return {
             "error": _safe_error(e, "scale_tkc_cluster"),
             "hint": (
-                "Run get_tkc_cluster for the cluster's current phase and node "
-                "pools."
+                "Run get_tkc_cluster for the cluster's current phase and "
+                "replica counts. No tool lists node pool names; an unknown "
+                "pool_name is rejected with the available names in the error."
             ),
         }
     _audit.log(target=t, operation="scale_tkc_cluster",
@@ -696,8 +731,11 @@ def delete_tkc_cluster(
         return {
             "error": _safe_error(e, "delete_tkc_cluster"),
             "hint": (
-                "Run get_tkc_cluster for the cluster's phase and running "
-                "workloads, or list_tkc_clusters to confirm name and namespace."
+                "Run get_tkc_cluster for the cluster's phase and conditions, "
+                "or list_tkc_clusters to confirm name and namespace. The "
+                "running workloads that block a delete are not listed by any "
+                "tool — use get_tkc_kubeconfig and inspect the cluster, or "
+                "pass force=True to skip the check."
             ),
         }
     if not dry_run and confirmed:
