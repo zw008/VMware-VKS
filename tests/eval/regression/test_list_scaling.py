@@ -109,7 +109,9 @@ def test_list_tkc_clusters_passes_limit():
     ):
         result = list_tkc_clusters(si)  # namespace=None → all namespaces
 
-    assert result == {"total": 0, "clusters": []}
+    assert result["items"] == []
+    assert result["total"] == 0
+    assert result["truncated"] is False
     _, kwargs = mock_api.list_cluster_custom_object.call_args
     assert kwargs["limit"] == _LIST_PAGE_LIMIT
     assert kwargs["_continue"] is None
@@ -140,7 +142,7 @@ def test_list_tkc_clusters_follows_continue_token():
         result = list_tkc_clusters(si)
 
     assert result["total"] == 2
-    assert [c["name"] for c in result["clusters"]] == ["a", "b"]
+    assert [c["name"] for c in result["items"]] == ["a", "b"]
     # Second call must carry the continue token from page one.
     second_kwargs = mock_api.list_cluster_custom_object.call_args_list[1].kwargs
     assert second_kwargs["_continue"] == "TOKEN"

@@ -82,27 +82,35 @@ def wcp_login(
         invalidate_wcp_token(host, username)
         if e.code in (401, 403):
             raise VksApiError(
-                f"Supervisor login failed (HTTP {e.code}) — check vCenter SSO "
-                "credentials; the account needs Workload Management "
-                "permissions.",
+                f"Supervisor login failed for '{username}' (HTTP {e.code}) — the "
+                f"vCenter SSO credentials were rejected, or the account lacks "
+                f"Workload Management permissions. Verify the password in the "
+                f"VMWARE_VKS_<TARGET>_PASSWORD environment variable, then run "
+                f"'vmware-vks preflight-auth' to retest the login.",
                 status_code=e.code,
             ) from e
         raise VksApiError(
-            f"Supervisor login failed (HTTP {e.code}) at {url}. "
-            "Verify Workload Management is enabled on this vCenter.",
+            f"Supervisor login failed (HTTP {e.code}) at {url}. Run "
+            f"check_vks_compatibility to confirm Workload Management is enabled "
+            f"on this vCenter, or 'vmware-vks preflight-auth' to see the raw "
+            f"/wcp/login response.",
             status_code=e.code,
         ) from e
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise VksApiError(
-            f"Supervisor login failed: {e}. Check that {url} is reachable "
-            "and Workload Management is enabled.",
+            f"Supervisor login failed: {e}. Check that {url} is reachable from "
+            f"here and that Workload Management is enabled; run 'vmware-vks check' "
+            f"to test vCenter reachability and TLS.",
         ) from e
 
     token = data.get("session_id") if isinstance(data, dict) else None
     if not token:
         raise VksApiError(
-            "Supervisor login succeeded but the response had no 'session_id' "
-            "field — unexpected /wcp/login response shape."
+            f"Supervisor login to {url} succeeded but the response carried no "
+            f"'session_id' field (keys: "
+            f"{', '.join(sorted(data)) if isinstance(data, dict) else type(data).__name__}) "
+            f"— unexpected /wcp/login response shape. Run 'vmware-vks preflight-auth' "
+            f"to capture the raw response and report it with the vCenter build."
         )
 
     _token_cache[key] = (token, time.monotonic() + _TOKEN_TTL_SECONDS)
@@ -121,8 +129,11 @@ def get_wcp_token(si: "ServiceInstance") -> str:
     target = get_target_config(si)
     if target is None:
         raise VksApiError(
-            "No connection target metadata for this session — connect via "
-            "ConnectionManager so Supervisor login credentials are available."
+            "No connection target metadata for this session — this ServiceInstance "
+            "was not opened by ConnectionManager, so the Supervisor login "
+            "credentials are unavailable. Connect via "
+            "vmware_vks.connection.ConnectionManager, and run 'vmware-vks check' "
+            "to verify the target resolves from config.yaml."
         )
     return wcp_login(
         target.host,

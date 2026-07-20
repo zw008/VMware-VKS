@@ -378,7 +378,7 @@ def test_list_tkc_clusters_tolerates_missing_spec():
         patch("vmware_vks.ops.tkc._resolve_tkc_version", return_value="v1beta1"),
     ):
         result = list_tkc_clusters(_mock_si(), namespace="dev")
-    assert result["clusters"][0]["k8s_version"] == ""
+    assert result["items"][0]["k8s_version"] == ""
 
 
 # ---------------------------------------------------------------------------

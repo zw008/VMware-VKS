@@ -79,9 +79,12 @@ def test_wcp_login_401_raises_teaching_error_and_invalidates():
         with pytest.raises(VksApiError) as exc_info:
             wcp_login.wcp_login("vc.example.com", "admin", "bad-pw")
     msg = str(exc_info.value)
-    assert "Supervisor login failed (HTTP 401)" in msg
-    assert "check vCenter SSO credentials" in msg
+    assert "Supervisor login failed for 'admin' (HTTP 401)" in msg
+    assert "vCenter SSO credentials were rejected" in msg
     assert "Workload Management permissions" in msg
+    # The remedy must name something the operator can act on, not just diagnose.
+    assert "VMWARE_VKS_<TARGET>_PASSWORD" in msg
+    assert "vmware-vks preflight-auth" in msg
     assert exc_info.value.status_code == 401
     assert ("vc.example.com", "admin") not in wcp_login._token_cache
 

@@ -36,10 +36,11 @@ def test_list_namespace_storage_usage_returns_list():
             result = list_namespace_storage_usage(si, "dev")
 
     assert result["namespace"] == "dev"
-    assert result["pvc_count"] == 2
-    assert len(result["pvcs"]) == 2
-    assert result["pvcs"][0]["name"] == "data-vol"
-    assert result["pvcs"][1]["capacity"] == "5Gi"
+    assert result["returned"] == 2
+    assert result["total"] == 2
+    assert len(result["items"]) == 2
+    assert result["items"][0]["name"] == "data-vol"
+    assert result["items"][1]["capacity"] == "5Gi"
 
 
 def test_list_namespace_storage_usage_uses_correct_namespace():
@@ -69,5 +70,7 @@ def test_list_namespace_storage_usage_empty():
             result = list_namespace_storage_usage(si, "empty-ns")
 
     assert result["namespace"] == "empty-ns"
-    assert result["pvc_count"] == 0
-    assert result["pvcs"] == []
+    assert result["returned"] == 0
+    assert result["total"] == 0
+    assert result["items"] == []
+    assert result["truncated"] is False

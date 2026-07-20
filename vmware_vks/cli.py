@@ -433,7 +433,7 @@ def tkc_list(
     si = _get_si(target)
     result = list_tkc_clusters(si, namespace=namespace)
     table = Table("Name", "Namespace", "Phase", "K8s Version")
-    for c in result["clusters"]:
+    for c in result["items"]:
         table.add_row(c["name"], c["namespace"], c["phase"], c["k8s_version"])
     console.print(f"Total: {result['total']}")
     console.print(table)

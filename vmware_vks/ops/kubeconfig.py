@@ -51,8 +51,10 @@ def build_tkc_kubeconfig(
 
         if not host:
             raise RuntimeError(
-                f"TKC cluster '{cluster_name}' control plane endpoint not available. "
-                "Is the cluster fully provisioned?"
+                f"TKC cluster '{cluster_name}' in namespace '{namespace}' has no "
+                f"control plane endpoint yet — it is not fully provisioned. Run "
+                f"get_tkc_cluster to check its phase, and retry once it reports "
+                f"Running."
             )
 
         # Supervisor JWT from POST /wcp/login — the SOAP session key is not
@@ -107,7 +109,10 @@ def _write_kubeconfig_file(output_path: Path, content: str) -> Path:
 
     if target.is_symlink():
         raise ValueError(
-            f"Refusing to write kubeconfig through a symlink: {output_path}"
+            f"Refusing to write kubeconfig through a symlink: {output_path}. "
+            f"The file carries a live session token, so following the link could "
+            f"redirect it elsewhere. Remove the symlink, or pass a regular file "
+            f"path to --output."
         )
 
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -119,7 +124,9 @@ def _write_kubeconfig_file(output_path: Path, content: str) -> Path:
         fd = os.open(str(target), flags, 0o600)
     except OSError as e:
         raise ValueError(
-            f"Cannot write kubeconfig to {output_path}: {e}"
+            f"Cannot write kubeconfig to {output_path}: {e}. Check that the "
+            f"parent directory exists and is writable, then retry with a "
+            f"writable --output path."
         ) from e
     with os.fdopen(fd, "w") as fh:
         fh.write(content)

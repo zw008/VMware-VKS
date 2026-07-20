@@ -31,10 +31,12 @@ def _list_tkc_in_namespace(si: ServiceInstance, namespace: str) -> list[str]:
     except Exception as e:
         _log.warning("Could not verify TKC clusters in '%s': %s", namespace, e)
         raise RuntimeError(
-            f"Cannot verify TKC clusters in '{namespace}': {e}. "
-            "Resolve connectivity or delete clusters manually first."
+            f"Cannot verify TKC clusters in '{namespace}': {e}. The delete is "
+            f"refused rather than risking orphaned clusters. Run 'vmware-vks check' "
+            f"to diagnose the connection, then list_tkc_clusters to confirm the "
+            f"namespace is empty before retrying."
         ) from e
-    return [c["name"] for c in result.get("clusters", [])]
+    return [c["name"] for c in result.get("items", [])]
 
 
 def list_namespaces(si: ServiceInstance) -> dict:
@@ -134,7 +136,8 @@ def delete_namespace(
         raise RuntimeError(
             f"Cannot delete namespace '{name}': "
             f"TKC clusters still exist: {', '.join(tkc_clusters)}. "
-            "Delete all TKC clusters first."
+            f"Run delete_tkc_cluster for each of those, then retry "
+            f"delete_namespace."
         )
 
     if dry_run:
@@ -147,7 +150,9 @@ def delete_namespace(
 
     if not confirmed:
         raise ValueError(
-            f"confirmed=True required to delete namespace '{name}'."
+            f"confirmed=True required to delete namespace '{name}'. Re-run "
+            f"delete_namespace with confirmed=True to proceed, or with "
+            f"dry_run=True to preview what would be deleted."
         )
 
     _rest_delete(si, f"/vcenter/namespaces/instances/{name}")

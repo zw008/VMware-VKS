@@ -2,14 +2,19 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from vmware_policy import sanitize
+from vmware_policy import paginated, sanitize
 
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
 
 def list_namespace_storage_usage(si: ServiceInstance, namespace: str) -> dict:
-    """List PVCs and storage usage for a vSphere Namespace."""
+    """List PVCs and storage usage for a vSphere Namespace.
+
+    Returns the family list envelope, with the queried ``namespace`` carried as
+    an extra key. The K8s call returns the whole collection in one response, so
+    ``total`` is the real PVC count and ``truncated`` is always False.
+    """
     import kubernetes as k8s
     from vmware_vks.k8s_connection import get_k8s_client
 
@@ -27,6 +32,6 @@ def list_namespace_storage_usage(si: ServiceInstance, namespace: str) -> dict:
             }
             for pvc in pvcs.items
         ]
-        return {"namespace": namespace, "pvc_count": len(items), "pvcs": items}
+        return paginated(items, total=len(items), namespace=namespace)
     finally:
         api_client.close()

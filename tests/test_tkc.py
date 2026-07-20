@@ -49,7 +49,7 @@ def test_list_tkc_clusters_empty():
         patch("vmware_vks.ops.tkc._resolve_tkc_version", return_value="v1alpha3"),
     ):
         result = list_tkc_clusters(si, namespace="dev")
-    assert result["clusters"] == []
+    assert result["items"] == []
     assert result["total"] == 0
 
 

@@ -51,18 +51,31 @@ def _resolve_supervisor_endpoint(si: ServiceInstance) -> str:
         clusters = _rest_get(si, "/vcenter/namespace-management/clusters")
         running = [c for c in clusters if c.get("config_status") == "RUNNING"]
         if not running:
-            raise RuntimeError("No running Supervisor clusters found.")
+            states = ", ".join(
+                f"{c.get('cluster')}={c.get('config_status')}" for c in clusters
+            ) or "none"
+            raise RuntimeError(
+                f"no Supervisor cluster is in config_status RUNNING (found: "
+                f"{states}). Run check_vks_compatibility to confirm this vCenter "
+                f"supports VKS, then get_supervisor_status to watch the cluster "
+                f"come up; retry once one reports RUNNING."
+            )
         cluster_data = _rest_get(
             si,
             f"/vcenter/namespace-management/clusters/{running[0]['cluster']}"
         )
         api_endpoint = cluster_data.get("api_server_cluster_endpoint", "")
         if not api_endpoint:
-            raise RuntimeError("Could not determine Supervisor API endpoint.")
+            raise RuntimeError(
+                f"Supervisor cluster '{running[0]['cluster']}' reports RUNNING but "
+                f"published no api_server_cluster_endpoint — its control plane is "
+                f"still coming up. Run get_supervisor_status to check, then retry."
+            )
     except Exception as e:
         raise RuntimeError(
-            f"Could not retrieve Supervisor API endpoint: {e}. "
-            "Ensure Workload Management is enabled."
+            f"Could not retrieve the Supervisor API endpoint from '{host}': {e}. "
+            f"Run 'vmware-vks check' to verify the vCenter connection, then "
+            f"check_vks_compatibility to confirm Workload Management is enabled."
         ) from e
 
     _endpoint_cache[host] = api_endpoint

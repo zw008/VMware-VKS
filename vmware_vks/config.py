@@ -183,7 +183,11 @@ class AppConfig:
             if t.name == name:
                 return t
         available = ", ".join(t.name for t in self.targets)
-        raise KeyError(f"Target '{name}' not found. Available: {available}")
+        raise KeyError(
+            f"Target '{name}' not found. Available: {available}. "
+            f"Copy one of those names exactly, or add a '{name}' entry under "
+            f"targets: in {CONFIG_FILE} and re-run 'vmware-vks check'."
+        )
 
     def environment_for(self, name: str | None) -> str:
         """Return the environment declared by ``name``, or by the default target.
@@ -202,7 +206,11 @@ class AppConfig:
     @property
     def default_target(self) -> TargetConfig:
         if not self.targets:
-            raise ValueError("No targets configured. Check config.yaml")
+            raise ValueError(
+                f"No targets configured in {CONFIG_FILE}. Run 'vmware-vks init' "
+                f"to generate one, or copy config.example.yaml there and add a "
+                f"targets: entry."
+            )
         return self.targets[0]
 
 

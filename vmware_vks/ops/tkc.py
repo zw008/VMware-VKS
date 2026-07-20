@@ -19,7 +19,7 @@ import yaml
 if TYPE_CHECKING:
     from pyVmomi.vim import ServiceInstance
 
-from vmware_policy import sanitize
+from vmware_policy import paginated, sanitize
 
 from vmware_vks.errors import VksApiError
 
@@ -144,9 +144,15 @@ def generate_tkc_yaml(
     Supervisors that have promoted Cluster API to v1.
     """
     if worker_count < 1:
-        raise ValueError(f"worker_count must be >= 1, got {worker_count}")
+        raise ValueError(
+            f"worker_count must be >= 1, got {worker_count}. Pass worker_count=1 "
+            f"or more to create_tkc_cluster."
+        )
     if control_plane_count not in (1, 3):
-        raise ValueError(f"control_plane_count must be 1 or 3, got {control_plane_count}")
+        raise ValueError(
+            f"control_plane_count must be 1 or 3, got {control_plane_count}. Pass "
+            f"1 for a single control plane node or 3 for HA to create_tkc_cluster."
+        )
 
     manifest = {
         "apiVersion": f"{_TKC_GROUP}/{api_version}",
@@ -185,7 +191,12 @@ def generate_tkc_yaml(
 
 
 def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict:
-    """List TKC clusters in a namespace (or all namespaces)."""
+    """List TKC clusters in a namespace (or all namespaces).
+
+    Returns the family list envelope. Paging walks the continue token to
+    exhaustion, so ``total`` is the real cluster count and ``truncated`` is
+    always False — the agent is told the listing is complete.
+    """
     import kubernetes as k8s
 
     ns = namespace or "default"
@@ -217,7 +228,7 @@ def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict
             }
             for item in items
         ]
-        return {"total": len(clusters), "clusters": clusters}
+        return paginated(clusters, total=len(clusters))
     finally:
         api.api_client.close()
 
@@ -362,7 +373,11 @@ def scale_tkc_cluster(
             pool (NOT a hardcoded name).
     """
     if worker_count < 1:
-        raise ValueError(f"worker_count must be >= 1, got {worker_count}")
+        raise ValueError(
+            f"worker_count must be >= 1, got {worker_count}. Pass worker_count=1 "
+            f"or more to scale_tkc_cluster; to remove the cluster entirely use "
+            f"delete_tkc_cluster."
+        )
 
     import kubernetes as k8s
 
@@ -399,7 +414,9 @@ def scale_tkc_cluster(
             except ValueError:
                 raise VksApiError(
                     f"Node pool '{pool_name}' not found in TKC cluster "
-                    f"'{name}'. Available pools: {', '.join(str(a) for a in available)}."
+                    f"'{name}'. Available pools: {', '.join(str(a) for a in available)}. "
+                    f"Copy one of those into pool_name, or omit pool_name so "
+                    f"scale_tkc_cluster scales the first pool."
                 ) from None
 
         # New list, new dict for the changed pool — preserve class and all
@@ -500,8 +517,10 @@ def _check_running_workloads(si: ServiceInstance, name: str, namespace: str) -> 
     except Exception as e:
         _log.warning("Could not verify workloads in cluster '%s': %s", name, e)
         raise RuntimeError(
-            f"Cannot verify workloads in TKC cluster '{name}': {e}. "
-            "Use force=True to skip workload check."
+            f"Cannot verify workloads in TKC cluster '{name}': {e}. The delete is "
+            f"refused rather than risking running workloads. Run 'vmware-vks check' "
+            f"to diagnose the connection, or re-run delete_tkc_cluster with "
+            f"force=True to skip the workload check."
         ) from e
 
 
@@ -526,7 +545,9 @@ def delete_tkc_cluster(
                 f"Cannot delete TKC cluster '{name}': "
                 f"{len(workloads)} running workload(s) detected: "
                 f"{[w['kind'] + '/' + w['name'] for w in workloads[:5]]}. "
-                "Delete workloads first or use force=True."
+                f"Remove them first — get_tkc_kubeconfig gives you a kubeconfig to "
+                f"drain the cluster — or re-run delete_tkc_cluster with force=True "
+                f"to delete anyway."
             )
 
     if dry_run:
@@ -540,7 +561,9 @@ def delete_tkc_cluster(
 
     if not confirmed:
         raise ValueError(
-            f"confirmed=True required to delete TKC cluster '{name}'."
+            f"confirmed=True required to delete TKC cluster '{name}'. Re-run "
+            f"delete_tkc_cluster with confirmed=True to proceed, or with "
+            f"dry_run=True to preview what would be deleted."
         )
 
     import kubernetes as k8s
