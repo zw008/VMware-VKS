@@ -11,6 +11,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.table import Table
+from vmware_policy import PolicyDenied, guarded
 
 from vmware_vks.errors import VksApiError
 
@@ -91,6 +92,13 @@ def _cli_errors(fn):
             return fn(*args, **kwargs)
         except (typer.Exit, typer.Abort):
             raise
+        except PolicyDenied as e:
+            # A deny rule or maintenance window refused this write — @guarded ran
+            # guard() before the body and already wrote the status="denied" audit
+            # row. Teach the operator which rule fired instead of a traceback.
+            rule = f" [dim](rule: {e.result.rule})[/]" if e.result.rule else ""
+            console.print(f"[red]Denied by policy: {e.result.reason}[/]{rule}")
+            raise typer.Exit(1) from e
         except ssl.SSLError as e:
             # Self-signed lab certs are the usual cause; teach the toggle.
             console.print(
@@ -299,6 +307,7 @@ def namespace_get(
 ):
     """Get details for a single Namespace."""
     import json
+
     from vmware_vks.ops.namespace import get_namespace
 
     si = _get_si(target)
@@ -308,6 +317,7 @@ def namespace_get(
 
 @namespace_app.command("create")
 @_cli_errors
+@guarded(risk_level='medium')
 def namespace_create(
     name: str = typer.Argument(...),
     cluster_id: str = typer.Option(..., "--cluster", help="Supervisor cluster MoRef"),
@@ -320,6 +330,7 @@ def namespace_create(
 ):
     """Create a vSphere Namespace (dry-run by default, use --apply to create)."""
     import json
+
     from vmware_vks.ops.namespace import create_namespace
 
     si = _get_si(target)
@@ -346,6 +357,7 @@ def namespace_create(
 
 @namespace_app.command("update")
 @_cli_errors
+@guarded(risk_level='medium')
 def namespace_update(
     name: str = typer.Argument(...),
     cpu_limit: Optional[int] = typer.Option(None, "--cpu"),
@@ -355,6 +367,7 @@ def namespace_update(
 ):
     """Update Namespace resource quotas or storage policy."""
     import json
+
     from vmware_vks.ops.namespace import update_namespace
 
     si = _get_si(target)
@@ -370,6 +383,7 @@ def namespace_update(
 
 @namespace_app.command("delete")
 @_cli_errors
+@guarded(risk_level='high')
 def namespace_delete(
     name: str = typer.Argument(...),
     force: bool = typer.Option(False, "--force", help="Skip interactive confirm"),
@@ -377,6 +391,7 @@ def namespace_delete(
 ):
     """Delete a vSphere Namespace (rejects if TKC clusters exist inside)."""
     import json
+
     from vmware_vks.ops.namespace import delete_namespace
 
     si = _get_si(target)
@@ -448,6 +463,7 @@ def tkc_get(
 ):
     """Get detailed info for a TKC cluster."""
     import json
+
     from vmware_vks.ops.tkc import get_tkc_cluster
 
     si = _get_si(target)
@@ -478,6 +494,7 @@ def tkc_versions(
 
 @tkc_app.command("create")
 @_cli_errors
+@guarded(risk_level='medium')
 def tkc_create(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
@@ -494,8 +511,9 @@ def tkc_create(
     Missing --version or --vm-class triggers interactive prompts.
     """
     import json
-    from vmware_vks.ops.tkc import create_tkc_cluster, get_tkc_available_versions
+
     from vmware_vks.ops.namespace import list_vm_classes
+    from vmware_vks.ops.tkc import create_tkc_cluster, get_tkc_available_versions
 
     si = _get_si(target)
 
@@ -546,6 +564,7 @@ def tkc_create(
 
 @tkc_app.command("scale")
 @_cli_errors
+@guarded(risk_level='medium')
 def tkc_scale(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
@@ -559,6 +578,7 @@ def tkc_scale(
 ):
     """Scale TKC cluster worker node count (other node pools are preserved)."""
     import json
+
     from vmware_vks.ops.tkc import scale_tkc_cluster
 
     si = _get_si(target)
@@ -576,6 +596,7 @@ def tkc_scale(
 
 @tkc_app.command("upgrade")
 @_cli_errors
+@guarded(risk_level='medium')
 def tkc_upgrade(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
@@ -584,6 +605,7 @@ def tkc_upgrade(
 ):
     """Upgrade TKC cluster to a new K8s version."""
     import json
+
     from vmware_vks.ops.tkc import upgrade_tkc_cluster
 
     si = _get_si(target)
@@ -601,6 +623,7 @@ def tkc_upgrade(
 
 @tkc_app.command("delete")
 @_cli_errors
+@guarded(risk_level='high')
 def tkc_delete(
     name: str = typer.Argument(...),
     namespace: str = typer.Option(..., "-n", "--namespace"),
@@ -614,6 +637,7 @@ def tkc_delete(
 ):
     """Delete a TKC cluster (rejects if workloads running)."""
     import json
+
     from vmware_vks.ops.tkc import delete_tkc_cluster
 
     si = _get_si(target)
@@ -676,6 +700,7 @@ def kubeconfig_get(
 ):
     """Get TKC cluster kubeconfig."""
     import json
+
     from vmware_vks.ops.kubeconfig import write_kubeconfig
 
     si = _get_si(target)
@@ -698,6 +723,7 @@ def harbor_info(
 ):
     """Get Harbor registry info."""
     import json
+
     from vmware_vks.ops.harbor import get_harbor_info
 
     si = _get_si(target)
@@ -718,6 +744,7 @@ def storage_usage(
 ):
     """List PVC storage usage for a Namespace."""
     import json
+
     from vmware_vks.ops.storage import list_namespace_storage_usage
 
     si = _get_si(target)

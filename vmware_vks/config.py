@@ -143,11 +143,10 @@ class TargetConfig:
     environment: str = ""
     """Which environment this target is, e.g. production / staging / lab.
 
-    Policy rules scope by environment, and the shipped baseline warns on
-    state-changing operations against a target that declares none — an
-    unlabelled target is treated as unknown, not as safe, and the next major
-    release refuses them. Read-only operations are never affected. See
-    :mod:`vmware_policy.environment`.
+    An optional label. A ``deny`` rule may scope itself to an environment
+    (for example, refusing a tool only where ``environment: production``); a
+    target that declares none is simply not matched by such a rule and is
+    never refused for lacking a label. See :mod:`vmware_policy.environment`.
     """
 
     @property

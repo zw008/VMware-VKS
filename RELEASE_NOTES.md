@@ -1,3 +1,23 @@
+## v1.8.8 — CLI writes now route through policy + audit, exactly like the MCP tools
+
+Every state-changing CLI command is now wrapped by `@guarded`, the CLI counterpart
+to the MCP `@vmware_tool` decorator: it runs the same vmware-policy `guard()`
+authorization and writes the same `audit_call()` row to `~/.vmware/audit.db`. A
+`delete`/`disable`/destructive command run through a shell is now authorized and
+recorded exactly like the equivalent MCP tool — closing the gap where CLI writes
+bypassed policy and landed only in the legacy per-skill log (HLD I-1/I-8).
+
+- a policy `deny` rule now refuses the operation on the CLI with a teaching line
+  naming the rule that fired, not a traceback
+- the legacy per-skill audit log is still written this release (dual-write); it is
+  removed at 2.0
+- **requires vmware-policy >= 1.8.8** (the release that adds the shared `guarded` core)
+- a regression test derives the write-command set from the MCP `[WRITE]` markers and
+  asserts every one is `@guarded`, so a new write command cannot ship unguarded
+
+Also carries the environment-field docstring correction (an optional label a `deny`
+rule may scope to — there is no "warn now / refuse next major" gate).
+
 ## v1.8.7 (2026-07-21) — the skill-level read-only switch is removed; read/write authorization is the vCenter account's job (RBAC)
 
 ### Removed: `VMWARE_READ_ONLY` / `read_only:` — give the agent a read-only service account instead

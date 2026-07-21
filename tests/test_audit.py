@@ -100,7 +100,7 @@ def test_returned_failure_is_audited_as_a_failure(monkeypatch):
         def log(self, **kw):
             rows.append(kw)
 
-    monkeypatch.setattr("vmware_policy.decorators.get_engine", lambda: _Recorder())
+    monkeypatch.setattr("vmware_policy.guard.get_engine", lambda: _Recorder())
     monkeypatch.setattr(
         srv, "_get_si", lambda target=None: (_ for _ in ()).throw(RuntimeError("boom"))
     )
