@@ -196,6 +196,15 @@ def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict
     Returns the family list envelope. Paging walks the continue token to
     exhaustion, so ``total`` is the real cluster count and ``truncated`` is
     always False — the agent is told the listing is complete.
+
+    .. deprecated:: 1.8.6
+       ``clusters`` is a compatibility alias for ``items`` and will be removed
+       in 2.0. Until v1.8.0 this function returned ``{total, clusters}``; the
+       envelope renamed ``clusters`` to ``items``, and because the payload was
+       already a keyed dict the break was silent — ``result.get("clusters", [])``
+       started returning ``[]``, which reads as "this namespace has no
+       clusters" rather than as a failure. Both keys are the *same* list
+       object, so they cannot drift. Migrate to ``items``.
     """
     import kubernetes as k8s
 
@@ -228,7 +237,10 @@ def list_tkc_clusters(si: ServiceInstance, namespace: str | None = None) -> dict
             }
             for item in items
         ]
-        return paginated(clusters, total=len(clusters))
+        envelope = paginated(clusters, total=len(clusters))
+        # Deprecated alias for pre-v1.8.0 callers; removed in 2.0. Same list
+        # object as ``items`` — a copy would let the two drift.
+        return {**envelope, "clusters": envelope["items"]}
     finally:
         api.api_client.close()
 

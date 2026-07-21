@@ -14,23 +14,7 @@ targets:
     # verify_ssl: true is the default (v1.5.15+). Set to false ONLY for
     # self-signed certs in lab/dev environments — disables SSL verification.
     # verify_ssl: false
-    # Declare which environment this target is. Policy scopes by environment:
-    # a target labelled production requires a named approver
-    # (VMWARE_AUDIT_APPROVED_BY) for irreversible work — that part is active
-    # now. A target that declares nothing is treated as unknown: writes still
-    # run today but log a warning, and the next major release will refuse them,
-    # so declaring it now makes that upgrade a no-op. Read-only operations are
-    # never affected. Run 'vmware-audit policy' to see the rules in force.
+    # Optional label for this target. An environment-scoped 'deny' rule in
+    # ~/.vmware/rules.yaml can match on it — e.g. freeze writes on 'production'.
+    # A target with no label is simply not matched by such a rule.
     environment: production
-
-# Read-only mode (v1.8.0). When true, 9 of the 20 tools are removed from the MCP
-# registry at startup — the 7 write tools plus get_supervisor_kubeconfig and
-# get_tkc_kubeconfig, which are read-only against vCenter but materialise a
-# session-token credential file at a model-supplied local path. The 11 remaining
-# read-only tools stay available. The model cannot call what list_tools() never
-# shows it, so no prompt discipline is required. Fail-closed: if read-only is
-# requested but cannot be proven, the server refuses to start.
-# Precedence: VMWARE_VKS_READ_ONLY > VMWARE_READ_ONLY > this setting > off, so an
-# MCP client's env block can lock a deployment down without editing this file.
-# Default is false.
-# read_only: true

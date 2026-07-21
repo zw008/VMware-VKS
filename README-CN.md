@@ -9,8 +9,6 @@
 
 MCP Skill + CLI，用于 VMware vSphere with Tanzu (VKS) 管理 — Supervisor 集群、vSphere 命名空间和 TanzuKubernetesCluster 生命周期。20 个 MCP 工具。
 
-- **只读模式**（v1.8.0）— 一个环境变量（`VMWARE_READ_ONLY=true`）即可在启动时把所有写工具**外加两个 kubeconfig 工具**从 MCP 注册表中移除；适合审计、PoC 演示和不可信/本地模型场景。详见[只读模式](#只读模式)。
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## 配套 Skills
@@ -62,36 +60,31 @@ vmware-vks tkc create my-cluster -n dev --version v1.28.4+vmware.1 --vm-class be
 vmware-vks tkc create my-cluster -n dev --apply
 ```
 
-## 只读模式
+## 离线 / 气隙环境安装（从源码）
 
-设置 `VMWARE_READ_ONLY=true`，MCP server 会在启动时收起 **20 个工具中的 9 个**：
-7 个写工具（命名空间/TKC 的创建、更新、扩缩容、升级、删除），**外加两个 kubeconfig
-工具**。`get_supervisor_kubeconfig` / `get_tkc_kubeconfig` 对 vCenter 而言是只读的，
-但它们会在调用方指定的本地路径生成含会话令牌的 kubeconfig 凭据文件——因此在锁定
-部署中，凭据文件必须显式选择开启，而不是默认就能拿到。
+本项目采用现代 PEP 517 构建系统（hatchling），因此**没有 `setup.py`** 是设计使然，
+而非缺失文件。若你克隆源码后遇到 `ERROR: File "setup.py" or "setup.cfg" not found
+... editable mode currently requires a setuptools-based build`，说明你的 `pip` 版本
+低于 21.3，无法用非 setuptools 后端做**可编辑**（`-e`）安装。可编辑模式只是开发
+便利，运行本工具并不需要它——任选其一：
 
-这是结构性保证，不是提示词约束：被收起的工具直接从注册表移除，`list_tools()`
-根本不会列出它们——模型看不见的工具就无法调用。**默认关闭。** Fail-closed：
-若请求了只读模式但无法保证生效，server 会拒绝启动，绝不带病运行。
+```bash
+# 从源码树安装 —— 普通（非可编辑）安装会构建 wheel：
+pip install .              # 不是  pip install -e .
 
-```json
-{
-  "mcpServers": {
-    "vmware-vks": {
-      "command": "vmware-vks",
-      "args": ["mcp"],
-      "env": {
-        "VMWARE_VKS_CONFIG": "~/.vmware-vks/config.yaml",
-        "VMWARE_READ_ONLY": "true"
-      }
-    }
-  }
-}
+# ……或先升级 pip，可编辑安装也能用：
+pip install --upgrade pip && pip install -e .
 ```
 
-- **单 skill 覆盖**：`VMWARE_VKS_READ_ONLY` 优先于家族级 `VMWARE_READ_ONLY`，本 skill 可与家族其他成员取不同值。
-- **配置文件方式**：在 `~/.vmware-vks/config.yaml` 中设置 `read_only: true`。优先级：单 skill 环境变量 → 家族环境变量 → 配置文件 → 关闭。
-- **启动日志**：server 启动时打印 `Read-only mode active for vmware-vks — withheld 9 write tool(s): ...`，可据此确认闸门已生效。
+对于**真正的气隙主机**，在联网机器上构建好 wheel 再拷贝过去——目标主机无需联网：
+
+```bash
+# 在联网机器上，把本包及其依赖收集为 wheel：
+pip wheel . -w dist        # → dist/*.whl   （或：uv build，仅构建本包）
+
+# 把 dist/ 拷到气隙主机，然后离线安装：
+pip install --no-index --find-links dist vmware-vks
+```
 
 ## 常用工作流
 
@@ -262,7 +255,6 @@ vmware-vks-mcp
 | 特性 | 说明 |
 |------|------|
 | 以只读为主 | 20 个工具中 13 个为只读 |
-| 只读模式 | `VMWARE_READ_ONLY=true` 从 MCP 注册表移除全部 9 个具有写效果的工具（7 个写操作 + 2 个 kubeconfig 落盘工具）— 详见[只读模式](#只读模式) |
 | 默认 dry-run | `create_namespace`、`create_tkc_cluster`、`delete_namespace`、`delete_tkc_cluster` 均默认 `dry_run=True` |
 | TKC 保护 | `delete_namespace` 在命名空间内存在 TKC 集群时拒绝执行 |
 | 工作负载保护 | `delete_tkc_cluster` 在 Deployment/StatefulSet 运行时拒绝执行 |

@@ -79,9 +79,9 @@ chmod 600 ~/.vmware-vks/.env
 vmware-vks check
 ```
 
-**`environment` (declare it now)**: policy rules scope by environment, and this declaration is the only thing that tells them which of your vCenters is production — the target's *name* is not used for it. Any label you like works (`production`, `staging`, `lab`, `dc2-prod`); `production` is the one the shipped rules attach a second-person approval requirement to for irreversible work.
+**`environment` (optional label)**: policy scopes its rules by this value, so an environment-scoped `deny` rule in `~/.vmware/rules.yaml` can match on it — for example, to freeze state-changing writes on `production`. Any label you like works (`production`, `staging`, `lab`, `dc2-prod`); the target's *name* is not used for it.
 
-A target that declares nothing counts as unknown. Today a state-changing operation against it still runs and logs a warning; the next major release refuses it. Declaring `environment:` on each target now makes that upgrade a no-op. Read-only operations are never affected either way. Run `vmware-audit policy` to see the rules currently in force.
+A target with no label is simply not matched by such a rule. Read-only operations are never affected either way. Run `vmware-audit policy` to see the rules currently in force.
 
 ## MCP Mode (Optional)
 
@@ -138,54 +138,9 @@ whitespace are handled correctly).
 > Secrets Manager, or a Kubernetes Secret) into the `*_PASSWORD` environment
 > variable at process start. The code reads the env var either way.
 
-## Read-Only Mode
+## Read-Only Operation
 
-Off by default. When on, 9 of the 20 tools are removed from the MCP registry at start-up,
-so `list_tools()` never offers them — the model cannot call what it cannot see, and no
-prompt discipline is required. The 11 survivors are all reads.
-
-Nine, not the seven marked Write: `get_supervisor_kubeconfig` and `get_tkc_kubeconfig` are
-withheld too. Both are read-only with respect to vCenter, but both materialise a
-session-token credential file at a model-supplied local path — a side effect a locked-down
-deployment should opt into explicitly rather than receive by default.
-
-Three ways to turn it on, highest precedence first:
-
-| Setting | Scope |
-|---------|-------|
-| `VMWARE_VKS_READ_ONLY=true` | this skill only |
-| `VMWARE_READ_ONLY=true` | every installed VMware skill — one variable puts the whole estate into an audit posture |
-| `read_only: true` in `~/.vmware-vks/config.yaml` | this skill, persisted to disk |
-
-Precedence is **per-skill env → family env → config → off**. The environment variables come
-first so a deployment can be locked down from the MCP client's `env` block without editing
-any config file:
-
-```json
-{
-  "mcpServers": {
-    "vmware-vks": {
-      "command": "vmware-vks",
-      "args": ["mcp"],
-      "env": { "VMWARE_READ_ONLY": "true" }
-    }
-  }
-}
-```
-
-An empty string (`"VMWARE_READ_ONLY": ""`) counts as unset, not as an explicit off — a
-template leftover is not a decision, and treating it as one would let it override
-`read_only: true` in config.
-
-**Fail-closed.** If read-only mode is requested but cannot be *proven* — the tool registry
-cannot be enumerated, or a removal does not take effect — the server refuses to start rather
-than serve write tools it promised to withhold. A misspelled value is handled differently:
-`VMWARE_READ_ONLY=ture` does not abort, it resolves to **on** with a warning, so a typo
-locks the deployment down instead of quietly leaving it open.
-
-**Verifying it took.** `vmware-vks check` reports the resolved state and which setting it
-came from — including the case where an unrecognised value enabled the mode by accident. The
-MCP server's start-up log additionally names every tool that was withheld.
+To run the agent read-only, give it a read-only vCenter/Supervisor service account (RBAC).
 
 ## Security
 

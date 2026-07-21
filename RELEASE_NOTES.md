@@ -1,3 +1,82 @@
+## v1.8.7 (2026-07-21) — the skill-level read-only switch is removed; read/write authorization is the vCenter account's job (RBAC)
+
+### Removed: `VMWARE_READ_ONLY` / `read_only:` — give the agent a read-only service account instead
+
+The skill-level read-only switch is gone. It was enforced only on the MCP tool
+registry, and any agent with a shell (every SKILL.md grants `allowed-tools: Bash`)
+could reach the same change one CLI command away — so it withheld the *tool*, not
+the *capability*. It was never a real boundary.
+
+To run an agent read-only, give it a **read-only vCenter/NSX service account
+(RBAC)**. Writes are then refused at the platform, un-bypassably, regardless of
+surface or shell — the one place read/write control cannot be stepped around. A
+config still carrying `read_only: true` is ignored, with a one-time warning that
+names the replacement (no silent behavior change).
+
+### Removed: approval tiers and the declared-environment gate (via vmware-policy)
+
+The graduated-autonomy approval tiers (`confirm`/`dual`/`review`) and the "declare
+an environment or be refused" baseline are removed — they only ever fired on the
+rarest configuration while carrying the family's most complex machinery. Opt-in
+`deny` rules and the maintenance window remain, and apply identically wherever a
+tool runs.
+
+### Added: offline / air-gapped install docs
+
+The README now covers installing from source without editable mode (for older
+`pip`) and building wheels to carry onto an air-gapped host — the modern PEP 517
+layout has no `setup.py` by design, which is expected, not a missing file.
+
+This release also carries the accumulated fixes staged since 1.8.5.
+
+## v1.8.6 (unreleased) — `clusters`, `pvcs` and `pvc_count` come back as deprecated aliases
+
+### Fixed — two v1.8.0 renames that broke callers without telling them
+
+v1.8.0 said every `[READ]` list tool now returns the family envelope "instead of
+a bare array". For two tools in this skill that was not true — both already
+returned a keyed dict, so the conversion renamed a key:
+
+| tool | v1.7.7 | v1.8.0 |
+|---|---|---|
+| `list_tkc_clusters` | `{total, clusters}` | `clusters` → `items` |
+| `list_namespace_storage_usage` | `{namespace, pvc_count, pvcs}` | `pvcs` → `items`, `pvc_count` **deleted** |
+
+The distinction matters because it decides whether you find out. Replacing a
+bare array with a dict breaks loudly — `result[0]` raises. Renaming a key inside
+a dict that was already there breaks quietly: `result.get("clusters", [])` kept
+returning a value, just always `[]` — which reads as "this namespace has no
+clusters", not as a failure.
+
+The v1.8.0 notes made this worse rather than surfacing it. A reader who used
+either tool, checked the sentence, saw that their payload was a keyed dict and
+not a bare array, would correctly conclude the described change was not
+theirs — and ship the bug. The v1.8.0 entry below now carries a correction
+saying so explicitly.
+
+Worth stating plainly: **this repo already knew.**
+`tests/eval/regression/test_result_envelope.py` has recorded both old shapes in
+its module docstring since 2026-07-20. The knowledge was in the test suite and
+never reached the release notes.
+
+**`clusters` and `pvcs` are restored as deprecated aliases**, pointing at the
+*same list object* as `items` rather than copies, so they cannot drift.
+**`pvc_count` is restored** as well — it was deleted outright rather than
+renamed — and is derived from `returned`, so it cannot disagree with the list it
+counts. `items` remains the primary key. **All three are removed in 2.0** —
+migrate to `items` / `returned`.
+
+Pinned by `tests/eval/regression/test_deprecated_key_aliases.py`, which asserts
+a pre-v1.8.0 caller still sees its rows, that each alias is the same object
+(verified by mutating one and reading the other), and that `pvc_count` always
+equals `len(pvcs)`.
+
+Two sibling skills shipped the same shape and are fixed in the same release:
+`list_virtual_machines` in vmware-monitor and `list_vm_tags` in
+vmware-nsx-security.
+
+---
+
 ## v1.8.5 (2026-07-20) — the two fixes v1.8.4 announced now actually work
 
 Four adversarial reviews of v1.8.4 found that both of its headline fixes were
@@ -298,6 +377,38 @@ This closes the reported failure where long responses were summarised as "no dat
 returned": a bare list gives a model no way to tell a complete answer from page one, so
 it guessed. `truncated: false` now positively states completeness — including when
 `items` is empty, which means "checked, found none", not "the call failed".
+
+> **Correction (v1.8.6).** The sentence "instead of a bare array" above is true
+> of 51 of the 55 tools converted family-wide. It is false of four, and **two of
+> them are in this repo**.
+>
+> Neither was a bare array before v1.8.0. Both returned a keyed dict, so the
+> conversion renamed a key rather than changing the payload type:
+>
+> | tool | v1.7.7 | v1.8.0 |
+> |---|---|---|
+> | `list_tkc_clusters` | `{total, clusters}` | `clusters` → `items` |
+> | `list_namespace_storage_usage` | `{namespace, pvc_count, pvcs}` | `pvcs` → `items`, `pvc_count` **deleted** |
+>
+> That is a different kind of break from the other 51. A bare-array caller doing
+> `result[0]` gets an immediate `KeyError` on a dict and finds out at once; a
+> caller doing `result.get("clusters", [])` kept running and silently saw zero
+> clusters, which reads as "this namespace is empty" rather than as a failure.
+>
+> If you read this section when v1.8.0 shipped, checked either tool, saw a keyed
+> dict and concluded the change did not apply to you: it did. The count in the
+> bullet below is the tell — three tools are listed as converted, but five ops
+> functions return the envelope. The two missing from the count are exactly the
+> two above, and they were left out of the prose for the same reason.
+>
+> **v1.8.6 restores `clusters` and `pvcs`** as deprecated aliases pointing at the
+> *same list object* as `items` (not copies — copies drift), and restores
+> `pvc_count`, derived from `returned` so it cannot disagree with the list it
+> counts. All three are removed in 2.0. Migrate to `items` / `returned`.
+>
+> The other two, for anyone running more of the family: `list_virtual_machines`
+> (`vms` → `items`) in vmware-monitor, and `list_vm_tags` (`tags` → `items`) in
+> vmware-nsx-security.
 
 - **3 tool(s) converted** across ops, MCP and CLI. All three report a real `total` and `truncated: false` — the REST call is a single
   un-paged GET, so "this is complete" is stated rather than left to inference.

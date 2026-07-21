@@ -32,54 +32,11 @@ These are structural, so it cannot.
 
 | Guardrail you would otherwise prompt for | Now enforced by |
 |---|---|
-| "Work exclusively in read-only mode and never modify anything" | **Read-only mode.** Set `VMWARE_READ_ONLY=true` and 9 tools are removed from the registry at startup, leaving 11. `list_tools()` never offers them, so the model cannot call what it cannot see. |
-| "Never hand a kubeconfig or session token back in conversation" | **The same gate, and it goes further than the markers.** `get_supervisor_kubeconfig` and `get_tkc_kubeconfig` carry a `[READ]` marker but are withheld anyway — they materialise a session-token credential file at a model-supplied local path. That is why 9 tools go where only 7 are marked Write. |
 | "Preview a namespace or cluster creation before applying it" | **`dry_run` defaults to true.** `create_namespace` and `create_tkc_cluster` return a YAML plan for review unless you explicitly pass `dry_run=False`. Preview is the default path, not a habit the model must maintain. |
 | "Confirm before deleting anything" | **`confirmed=True` is required.** `delete_namespace` additionally refuses while TKC clusters still exist inside it, and `delete_tkc_cluster` refuses while workloads are running unless `force=True`. |
 | "Use explicit limits for queries that may return large amounts of data" | **The list envelope.** `list_namespaces`, `list_supervisor_storage_policies` and `list_vm_classes` return `{items, returned, limit, total, truncated, hint}`, so the model reads truncation instead of guessing at it. These three read their collection in one un-paged call, so `total` is the real count and `truncated` is always `false`. |
 | "If a listing came back empty, say so rather than claiming the call failed" | Same envelope. Empty `items` with `truncated: false` means checked-and-none — a stated result, not a silence the model has to interpret. |
 | "Log every state change you make" | **The `@vmware_tool` decorator.** Every write is recorded to `~/.vmware/audit.db` before the model sees the result, and policy rules are evaluated ahead of execution. |
-
-### Turning read-only mode on
-
-One variable covers every skill in the family:
-
-```json
-{
-  "mcpServers": {
-    "vmware-vks": {
-      "command": "vmware-vks",
-      "args": ["mcp"],
-      "env": { "VMWARE_READ_ONLY": "true" }
-    }
-  }
-}
-```
-
-Per-skill override — useful when this skill alone should stay writable:
-
-```bash
-VMWARE_READ_ONLY=true        # whole family read-only
-VMWARE_VKS_READ_ONLY=false   # …except Kubernetes
-```
-
-Or permanently, in `~/.vmware-vks/config.yaml`:
-
-```yaml
-read_only: true
-```
-
-Precedence is per-skill env → family env → config file → off. The startup log
-lists exactly which tools were withheld, and `vmware-vks check` reports the
-resolved state and its source. An unparseable value (`VMWARE_READ_ONLY=ture`)
-enables read-only mode rather than silently ignoring the typo.
-
-A blocked tool is a lockdown, not a fault. When a tool is missing from
-`list_tools()`, the model should name the operation it cannot perform and say
-an operator must clear the switch — not retry, and not go looking for a
-different tool that achieves the same change. This matters more here than
-elsewhere: a model denied `get_tkc_kubeconfig` will sometimes try to reach the
-cluster another way.
 
 ---
 
@@ -139,9 +96,6 @@ your agent's instruction block.
 
 - Never print a kubeconfig, session token or bearer token into the conversation.
   Write it to a file with the -o path argument and report the path only.
-- A tool missing from the tool list means read-only mode is on. Name the blocked
-  operation and stop. Do not retry, do not substitute another tool, and do not
-  attempt to reach the cluster by another route.
 - Storage policies are selected by Policy ID, not display name. Call
   list_supervisor_storage_policies and use the ID column.
 - Leave dry_run at its default for create_namespace and create_tkc_cluster, show
@@ -164,7 +118,7 @@ checklist when evaluating any local model against these skills:
 | Adds generic recommendations unsupported by results | The "analysis discipline" rules. |
 | Drops requested fields or reorders results | State the required fields and ordering in the request itself, not only in the system prompt. |
 | Multi-tool workflows take 30–50s end to end | `get_supervisor_status` and `get_tkc_cluster` each answer a whole question in one call — prefer them over rebuilding the same picture from several list tools. |
-| Echoes a kubeconfig into the conversation, leaking a live token into context and logs | The credential rule above, and read-only mode, which withholds both kubeconfig tools outright. |
+| Echoes a kubeconfig into the conversation, leaking a live token into context and logs | The credential rule above. |
 | Passes a storage policy's display name where the Policy ID is required | The `list_supervisor_storage_policies` rule above. The failure text is "storage policy not found", which reads like a missing object rather than a wrong identifier. |
 | Reads "Creating" as "created" and reports success | The "a cluster's phase is not its health" rule. Have the model quote the phase verbatim. |
 | Retries a delete that was refused for a stated reason | The refusals are guards: a namespace with clusters in it, a cluster with running workloads. Report the reason instead of retrying with `force`. |

@@ -29,7 +29,6 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 from vmware_policy import (
-    apply_read_only_gate,
     mtime_cached_loader,
     sanitize,
     set_environment_resolver,
@@ -456,7 +455,8 @@ def list_tkc_clusters(namespace: Optional[str] = None, target: Optional[str] = N
     Returns the family list envelope: {items: [{name, namespace, phase,
     k8s_version}], returned, limit, total, truncated, hint}. The Supervisor
     list is walked to completion, so truncated is always False. Start here, then call get_tkc_cluster for full detail or
-    get_tkc_kubeconfig for access.
+    get_tkc_kubeconfig for access. 'clusters' is a deprecated pre-1.8.0 alias
+    of 'items', removed in 2.0 — read 'items'.
 
     Args:
         namespace: vSphere Namespace to filter by. Omit to list every one.
@@ -839,7 +839,8 @@ def list_namespace_storage_usage(namespace: str, target: Optional[str] = None) -
     truncated, hint}. Every PVC comes back in one call, so truncated is always
     False. Run list_namespaces first for the namespace; use
     list_supervisor_storage_policies instead for policy-level rather than
-    PVC-level information.
+    PVC-level information. 'pvcs' and 'pvc_count' are deprecated pre-1.8.0
+    aliases of 'items' and 'returned', removed in 2.0 — read 'items'.
 
     Args:
         namespace: Namespace to inspect.
@@ -851,41 +852,6 @@ def list_namespace_storage_usage(namespace: str, target: Optional[str] = None) -
         return _storage.list_namespace_storage_usage(si, namespace)
     except Exception as e:
         return {"error": _safe_error(e, "vks"), "hint": "Run 'vmware-vks check' to verify connectivity."}
-
-
-# ---------------------------------------------------------------------------
-# Read-only gate
-# ---------------------------------------------------------------------------
-
-
-def _config_read_only() -> Optional[bool]:
-    """Best-effort read of ``read_only`` from the config file.
-
-    Runs at import time, when no config file need exist yet (tests, ``--help``,
-    smoke checks), so every failure degrades to "not configured" and lets the
-    env vars decide. None and False are equivalent here — config is the last
-    link in the precedence chain — but None keeps 'not configured'
-    distinguishable from 'configured off' in logs and debugging.
-
-    Resolved through the same VMWARE_VKS_CONFIG override the connection manager
-    and ``_environment_for`` use. Reading the default path instead would silently
-    ignore ``read_only: true`` set in an operator's custom config file — a
-    safety switch that appears configured and does nothing.
-    """
-    try:
-        config_path = os.environ.get("VMWARE_VKS_CONFIG")
-        return load_config(Path(config_path) if config_path else None).read_only
-    except Exception:  # noqa: BLE001 — absent/unreadable config is not an error here
-        return None
-
-
-# Applied once, after every tool module above has registered. In read-only mode
-# the write tools are removed from the registry, so list_tools() never offers
-# them — the guarantee is structural rather than a prompt instruction the model
-# may ignore (VMware-AIops issue #31).
-WITHHELD_WRITE_TOOLS: list[str] = apply_read_only_gate(
-    mcp, "vmware-vks", config_flag=_config_read_only()
-)
 
 
 # ---------------------------------------------------------------------------

@@ -9,8 +9,6 @@
 
 MCP Skill + CLI for VMware vSphere Kubernetes Service (VKS) management — Supervisor clusters, vSphere Namespaces, and VKS Cluster lifecycle. 20 MCP tools.
 
-- **Read-only mode** (v1.8.0) — one env var (`VMWARE_READ_ONLY=true`) strips every write tool **plus both kubeconfig tools** from the MCP registry at startup; ideal for audits, PoCs, and untrusted/local models. See [Read-Only Mode](#read-only-mode).
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## Companion Skills
@@ -62,38 +60,33 @@ vmware-vks tkc create my-cluster -n dev --version v1.28.4+vmware.1 --vm-class be
 vmware-vks tkc create my-cluster -n dev --apply
 ```
 
-## Read-Only Mode
+## Offline / Air-Gapped Install (from source)
 
-Set `VMWARE_READ_ONLY=true` and the MCP server withholds **9 of its 20 tools** at
-startup: the 7 write tools (Namespace/TKC create, update, scale, upgrade, delete)
-**plus both kubeconfig tools**. `get_supervisor_kubeconfig` / `get_tkc_kubeconfig`
-are read-only against vCenter, but they materialise a session-token kubeconfig
-file at a caller-supplied local path — so a locked-down deployment opts into
-credential files explicitly instead of receiving them by default.
+This project uses the modern PEP 517 build system (hatchling), so there is **no
+`setup.py`** by design — that is expected, not a missing file. If you cloned the
+source and hit `ERROR: File "setup.py" or "setup.cfg" not found ... editable mode
+currently requires a setuptools-based build`, your `pip` is older than 21.3 and
+cannot do an *editable* (`-e`) install with a non-setuptools backend. Editable
+mode is a developer convenience, not needed to run the tool — do one of:
 
-The guarantee is structural, not a prompt instruction: withheld tools are removed
-from the registry, so `list_tools()` never offers them and the model cannot call
-what it cannot see. **Off by default.** Fail-closed: if the mode is requested but
-cannot be guaranteed, the server refuses to start rather than running open.
+```bash
+# From the source tree — a normal (non-editable) install builds a wheel:
+pip install .              # NOT  pip install -e .
 
-```json
-{
-  "mcpServers": {
-    "vmware-vks": {
-      "command": "vmware-vks",
-      "args": ["mcp"],
-      "env": {
-        "VMWARE_VKS_CONFIG": "~/.vmware-vks/config.yaml",
-        "VMWARE_READ_ONLY": "true"
-      }
-    }
-  }
-}
+# ...or upgrade pip first, and editable works too:
+pip install --upgrade pip && pip install -e .
 ```
 
-- **Per-skill override**: `VMWARE_VKS_READ_ONLY` beats the family-wide `VMWARE_READ_ONLY`, so this skill can differ from the rest of the family.
-- **Config alternative**: `read_only: true` in `~/.vmware-vks/config.yaml`. Precedence: per-skill env → family env → config → off.
-- **Startup log**: the server logs `Read-only mode active for vmware-vks — withheld 9 write tool(s): ...` so you can confirm the gate engaged.
+For a **truly air-gapped host**, build the wheels on a connected machine and copy
+them over — the target then needs no network:
+
+```bash
+# On a connected machine, collect this package + its dependencies as wheels:
+pip wheel . -w dist        # → dist/*.whl   (or: uv build, for just this package)
+
+# Copy dist/ to the air-gapped host, then install offline:
+pip install --no-index --find-links dist vmware-vks
+```
 
 ## Common Workflows
 
@@ -272,7 +265,6 @@ vmware-vks-mcp
 | Feature | Description |
 |---------|-------------|
 | Read-heavy | 13/20 tools are read-only |
-| Read-only mode | `VMWARE_READ_ONLY=true` removes all 9 write-effecting tools (7 writes + 2 kubeconfig materialisers) from the MCP registry — see [Read-Only Mode](#read-only-mode) |
 | Dry-run default | `create_namespace`, `create_tkc_cluster`, `delete_namespace`, `delete_tkc_cluster` all default to `dry_run=True` |
 | TKC guard | `delete_namespace` rejects if TKC clusters exist inside |
 | Workload guard | `delete_tkc_cluster` rejects if Deployments/StatefulSets are running |

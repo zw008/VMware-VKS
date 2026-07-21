@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import stat
 from pathlib import Path
 
@@ -12,48 +11,6 @@ from rich.table import Table
 
 _log = logging.getLogger("vmware-vks.doctor")
 console = Console()
-
-
-def _config_read_only() -> bool | None:
-    """Read ``read_only`` from the config file the MCP server's gate would use.
-
-    Deliberately mirrors ``vmware_vks.mcp_server.server._config_read_only`` instead of
-    importing it: importing that module applies the gate as a side effect. The
-    path comes from ``VMWARE_VKS_CONFIG`` rather than this command's
-    ``--config`` argument, because the question doctor answers is what the
-    *server* will decide, not what this invocation was pointed at.
-    """
-    try:
-        from vmware_vks.config import load_config
-
-        config_path = os.environ.get("VMWARE_VKS_CONFIG")
-        return load_config(Path(config_path) if config_path else None).read_only
-    except Exception:  # noqa: BLE001 — absent/unreadable config is not an error here
-        return None
-
-
-def _check_read_only() -> tuple[bool, str]:
-    """Report the resolved read-only state and where it came from.
-
-    Never fails — read-only being on is a posture, not a fault. It is here
-    because an operator who set the switch had no way to confirm it took: the
-    only signal was a line in the MCP server's start-up log.
-    """
-    from vmware_policy.readonly import read_only_status
-
-    status = read_only_status("vmware-vks", _config_read_only())
-    if not status.recognised:
-        return True, (
-            f"{status.source}={status.raw!r} is not a recognised value. It resolves "
-            f"to ON (fail-closed), so all 9 write tools are withheld — probably not "
-            f"what was intended. Use true or false."
-        )
-    if status.enabled:
-        return True, (
-            f"ON (from {status.source}) — 9 write tools withheld, 11 read tools "
-            f"exposed. Clear that switch and restart the server to expose them."
-        )
-    return True, f"off (from {status.source}) — all 20 tools are exposed"
 
 
 def run_doctor(config_path: Path | None = None) -> bool:
@@ -177,10 +134,6 @@ def run_doctor(config_path: Path | None = None) -> bool:
                     )
             except Exception as e:
                 checks.append((f"vCenter reachable ({t.name})", False, str(e)))
-
-    # 5. Read-only mode — state, not pass/fail
-    passed, detail = _check_read_only()
-    checks.append(("Read-only mode", passed, detail))
 
     # Print table
     table = Table(title="vmware-vks Doctor", show_header=True)

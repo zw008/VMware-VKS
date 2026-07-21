@@ -11,7 +11,7 @@ installer:
   package: vmware-vks
 allowed-tools:
   - Bash
-metadata: {"openclaw":{"requires":{"env":["VMWARE_VKS_CONFIG"],"bins":["vmware-vks"],"config":["~/.vmware-vks/config.yaml","~/.vmware-vks/.env"]},"optional":{"env":["VMWARE_VKS_<TARGET>_PASSWORD","VMWARE_VKS_<TARGET>_USERNAME","VMWARE_READ_ONLY","VMWARE_VKS_READ_ONLY","VMWARE_AUDIT_APPROVED_BY"],"bins":["vmware-policy"]},"primaryEnv":"VMWARE_VKS_CONFIG","homepage":"https://github.com/zw008/VMware-VKS","emoji":"☸️","os":["macos","linux"]}}
+metadata: {"openclaw":{"requires":{"env":["VMWARE_VKS_CONFIG"],"bins":["vmware-vks"],"config":["~/.vmware-vks/config.yaml","~/.vmware-vks/.env"]},"optional":{"env":["VMWARE_VKS_<TARGET>_PASSWORD","VMWARE_VKS_<TARGET>_USERNAME","VMWARE_AUDIT_APPROVED_BY"],"bins":["vmware-policy"]},"primaryEnv":"VMWARE_VKS_CONFIG","homepage":"https://github.com/zw008/VMware-VKS","emoji":"☸️","os":["macos","linux"]}}
 compatibility: >
   vmware-policy auto-installed as Python dependency (provides @vmware_tool decorator and audit logging). All write operations audited to ~/.vmware/audit.db (SQLite, via vmware-policy) with a local JSON-Lines mirror at ~/.vmware-vks/audit.log.
   Credentials: Each vCenter target requires a per-target password env var in ~/.vmware-vks/.env following the pattern VMWARE_VKS_<TARGET_NAME_UPPER>_PASSWORD (e.g., target "vcenter-01" → VMWARE_VKS_VCENTER_01_PASSWORD). Passwords are never logged, never echoed, never included in audit entries. Kubeconfig tokens returned by get_supervisor_kubeconfig and get_tkc_kubeconfig are short-lived vCenter session tokens, not persistent credentials.
@@ -182,21 +182,9 @@ to be guessed from the row count. These three read their collection in one un-pa
 
 `delete_tkc_cluster` — requires `confirmed=True` and checks for running workloads. Rejects if found unless `force=True`.
 
-**Credential handling**: `get_supervisor_kubeconfig` and `get_tkc_kubeconfig` return short-lived session tokens (not long-lived credentials). Tokens are derived from the authenticated vCenter session and expire when the session ends. Kubeconfig output is intended for local `kubectl` use — agents should write it to a file (`-o <path>`) rather than displaying tokens in conversation context. In read-only mode these two tools are withheld along with the write tools, because they materialise credential files locally.
+**Credential handling**: `get_supervisor_kubeconfig` and `get_tkc_kubeconfig` return short-lived session tokens (not long-lived credentials). Tokens are derived from the authenticated vCenter session and expire when the session ends. Kubeconfig output is intended for local `kubectl` use — agents should write it to a file (`-o <path>`) rather than displaying tokens in conversation context.
 
 > Full capability details and safety features: see `references/capabilities.md`
-
-## Read-Only Mode
-
-If a tool described above is absent from `list_tools()`, this deployment is in read-only
-mode: `VMWARE_READ_ONLY=true` (or `VMWARE_VKS_READ_ONLY`, or `read_only: true` in
-config.yaml) withholds 9 tools at start-up, leaving 11. That is two more than the 7 marked
-Write, because `get_supervisor_kubeconfig` and `get_tkc_kubeconfig` go too — they
-materialise a session-token credential file at a model-supplied local path, an effect their
-`[READ]` marker under-reports. The lockdown is deliberate, not a fault — do not retry, and
-do not look for another tool that achieves the same change. Name the blocked operation and
-say an operator must clear the switch and restart the server. The other read tools are
-unaffected. Running with local or small models? See [`references/agent-guardrails.md`](references/agent-guardrails.md).
 
 ## CLI Quick Reference
 
@@ -267,27 +255,6 @@ Verify the cluster is in "Running" phase before scaling. Clusters in "Creating" 
 ### Delete namespace rejected unexpectedly
 
 The namespace delete guard prevents deletion when TKC clusters exist inside. Delete all TKC clusters in the namespace first, then retry.
-
-### "target does not declare which environment it is" on a write
-
-Policy scopes its rules by environment ("irreversible work in production needs a second person"), and it reads that from an explicit `environment:` declaration on each target — not from the target's name. A target that declares nothing counts as *unknown*:
-
-```
-delete_tkc_cluster ran against a target that declares no environment. A future
-release will REFUSE this. Add 'environment: <name>' to that target in the
-skill's config.yaml.
-```
-
-Today this is a **warning only** — the operation still runs. The next major release refuses it, so declare it now and that upgrade is a no-op:
-
-```yaml
-targets:
-  - name: vcenter01
-    host: vcenter.example.com
-    environment: production   # production | staging | lab | your own label
-```
-
-Read-only tools are never affected — listing namespaces, clusters and VM classes works untouched whether or not a target declares anything. Once declared, a target labelled `production` additionally requires a named approver (`VMWARE_AUDIT_APPROVED_BY`) for irreversible work; other labels change nothing beyond the risk tier recorded in the audit log. Run `vmware-audit policy` to see the rules in force.
 
 ## Prerequisites
 
